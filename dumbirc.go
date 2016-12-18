@@ -14,13 +14,15 @@ type Connection struct {
 	Server    string
 	Tls       bool
 	conn      *irc.Conn
-	Msg       *irc.Message
-	callbacks map[Event]func()
+	callbacks map[Event]func(Message)
 	Errchan   chan error
 }
 
 // Event codes
 type Event string
+
+//Msg event
+type Message irc.Message
 
 // Map event codes
 const (
@@ -38,22 +40,21 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		server,
 		tls,
 		&irc.Conn{},
-		&irc.Message{},
-		make(map[Event]func()),
+		make(map[Event]func(Message)),
 		make(chan error),
 	}
 }
 
 // Add callback to an event
-func (c *Connection) AddCallback(event Event, callback func()) {
+func (c *Connection) AddCallback(event Event, callback func(Message)) {
 	c.callbacks[event] = callback
 }
 
 // Run Callbacks
-func (c *Connection) runCallbacks() {
+func (c *Connection) runCallbacks(msg Message) {
 	for i, v := range c.callbacks {
-		if i == Event(c.Msg.Command) {
-			v()
+		if i == Event(msg.Command) {
+			v(msg)
 		}
 	}
 }
@@ -106,11 +107,11 @@ func (c *Connection) NewNick(n string) {
 }
 
 // Reply
-func (c *Connection) Reply(reply string) {
-	if c.Msg.Params[0] == c.Nick {
-		c.PrivMsg(c.Msg.Name, reply)
+func (c *Connection) Reply(msg Message, reply string) {
+	if msg.Params[0] == c.Nick {
+		c.PrivMsg(msg.Name, reply)
 	} else {
-		c.PrivMsg(c.Msg.Params[0], reply)
+		c.PrivMsg(msg.Params[0], reply)
 	}
 }
 
@@ -143,12 +144,12 @@ func (c *Connection) Start() {
 	}
 	go func(c *Connection) {
 		for {
-			c.Msg, err = c.conn.Decode()
+			msg, err := c.conn.Decode()
 			if err != nil {
 				c.Errchan <- err
 				return
 			}
-			c.runCallbacks()
+			go c.runCallbacks(Message(*msg))
 		}
 	}(c)
 }
