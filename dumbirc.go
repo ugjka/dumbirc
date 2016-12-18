@@ -3,7 +3,6 @@ package dumbirc
 import (
 	"crypto/tls"
 	"errors"
-	"log"
 
 	irc "github.com/sorcix/irc"
 )
@@ -149,7 +148,6 @@ func (c *Connection) Start() {
 				c.Errchan <- err
 				return
 			}
-			log.Println(c.Msg)
 			c.runCallbacks()
 		}
 	}(c)
