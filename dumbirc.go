@@ -93,6 +93,13 @@ func (c *Connection) PrivMsg(dest string, msg string) {
 	}
 }
 
+//PrivMsgBulk sends message to many
+func (c *Connection) PrivMsgBulk(list []string, msg string) {
+	for _, k := range list {
+		c.PrivMsg(k, msg)
+	}
+}
+
 //Disconnect disconnects from irc
 func (c *Connection) Disconnect() {
 	c.conn.Close()
