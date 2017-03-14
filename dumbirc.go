@@ -7,12 +7,12 @@ import (
 	irc "github.com/sorcix/irc"
 )
 
-// Settings
+//Connection Settings
 type Connection struct {
 	Nick      string
 	User      string
 	Server    string
-	Tls       bool
+	TLS       bool
 	conn      *irc.Conn
 	callbacks map[Event]func(Message)
 	Errchan   chan error
@@ -21,7 +21,7 @@ type Connection struct {
 // Event codes
 type Event string
 
-//Msg event
+//Message event
 type Message irc.Message
 
 // Map event codes
@@ -32,7 +32,7 @@ const (
 	NICKTAKEN Event = irc.ERR_NICKNAMEINUSE
 )
 
-//Create new bot
+//New creates a new bot
 func New(nick string, user string, server string, tls bool) *Connection {
 	return &Connection{
 		nick,
@@ -45,7 +45,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 	}
 }
 
-// Add callback to an event
+//AddCallback Adds callback to an event
 func (c *Connection) AddCallback(event Event, callback func(Message)) {
 	c.callbacks[event] = callback
 }
@@ -69,7 +69,7 @@ func (c *Connection) Join(ch []string) {
 	}
 }
 
-// Send PONG
+//Pong sends pong
 func (c *Connection) Pong() {
 	_, err := c.conn.Write([]byte(irc.PONG))
 	if err != nil {
@@ -77,6 +77,7 @@ func (c *Connection) Pong() {
 	}
 }
 
+//Ping sends ping
 func (c *Connection) Ping() {
 	_, err := c.conn.Write([]byte(irc.PING + " " + c.Server))
 	if err != nil {
@@ -84,7 +85,7 @@ func (c *Connection) Ping() {
 	}
 }
 
-// Send privmsg
+//PrivMsg sends privmessage
 func (c *Connection) PrivMsg(dest string, msg string) {
 	_, err := c.conn.Write([]byte(irc.PRIVMSG + " " + dest + " :" + msg))
 	if err != nil {
@@ -92,13 +93,13 @@ func (c *Connection) PrivMsg(dest string, msg string) {
 	}
 }
 
-// Disconnect
+//Disconnect disconnects from irc
 func (c *Connection) Disconnect() {
 	c.conn.Close()
 	c.Errchan <- errors.New("Disconnected!")
 }
 
-// Change nick
+//NewNick Changes nick
 func (c *Connection) NewNick(n string) {
 	_, err := c.conn.Write([]byte(irc.NICK + " " + n))
 	if err != nil {
@@ -106,7 +107,7 @@ func (c *Connection) NewNick(n string) {
 	}
 }
 
-// Reply
+//Reply replies to a message
 func (c *Connection) Reply(msg Message, reply string) {
 	if msg.Params[0] == c.Nick {
 		c.PrivMsg(msg.Name, reply)
@@ -117,7 +118,7 @@ func (c *Connection) Reply(msg Message, reply string) {
 
 // Start the bot
 func (c *Connection) Start() {
-	if c.Tls {
+	if c.TLS {
 		tls, err := tls.Dial("tcp", c.Server, &tls.Config{})
 		if err != nil {
 			c.Errchan <- err
@@ -152,4 +153,5 @@ func (c *Connection) Start() {
 			go c.runCallbacks(Message(*msg))
 		}
 	}(c)
+
 }
