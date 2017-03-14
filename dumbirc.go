@@ -2,7 +2,6 @@ package dumbirc
 
 import (
 	"crypto/tls"
-	"errors"
 
 	irc "github.com/sorcix/irc"
 )
@@ -16,6 +15,7 @@ type Connection struct {
 	conn      *irc.Conn
 	callbacks map[Event]func(Message)
 	Errchan   chan error
+	connected bool
 }
 
 // Event codes
@@ -42,6 +42,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		&irc.Conn{},
 		make(map[Event]func(Message)),
 		make(chan error),
+		false,
 	}
 }
 
@@ -62,8 +63,12 @@ func (c *Connection) runCallbacks(msg Message) {
 // Join channels
 func (c *Connection) Join(ch []string) {
 	for _, v := range ch {
+		if !c.connected {
+			return
+		}
 		_, err := c.conn.Write([]byte(irc.JOIN + " " + v))
 		if err != nil {
+			c.Disconnect()
 			c.Errchan <- err
 		}
 	}
@@ -71,24 +76,36 @@ func (c *Connection) Join(ch []string) {
 
 //Pong sends pong
 func (c *Connection) Pong() {
+	if !c.connected {
+		return
+	}
 	_, err := c.conn.Write([]byte(irc.PONG))
 	if err != nil {
+		c.Disconnect()
 		c.Errchan <- err
 	}
 }
 
 //Ping sends ping
 func (c *Connection) Ping() {
+	if !c.connected {
+		return
+	}
 	_, err := c.conn.Write([]byte(irc.PING + " " + c.Server))
 	if err != nil {
 		c.Disconnect()
+		c.Errchan <- err
 	}
 }
 
 //PrivMsg sends privmessage
 func (c *Connection) PrivMsg(dest string, msg string) {
+	if !c.connected {
+		return
+	}
 	_, err := c.conn.Write([]byte(irc.PRIVMSG + " " + dest + " :" + msg))
 	if err != nil {
+		c.Disconnect()
 		c.Errchan <- err
 	}
 }
@@ -102,14 +119,18 @@ func (c *Connection) PrivMsgBulk(list []string, msg string) {
 
 //Disconnect disconnects from irc
 func (c *Connection) Disconnect() {
+	c.connected = false
 	c.conn.Close()
-	c.Errchan <- errors.New("Disconnected!")
 }
 
 //NewNick Changes nick
 func (c *Connection) NewNick(n string) {
+	if !c.connected {
+		return
+	}
 	_, err := c.conn.Write([]byte(irc.NICK + " " + n))
 	if err != nil {
+		c.Disconnect()
 		c.Errchan <- err
 	}
 }
@@ -142,18 +163,25 @@ func (c *Connection) Start() {
 	}
 	_, err := c.conn.Write([]byte("USER " + c.Nick + " +iw * :" + c.User))
 	if err != nil {
+		c.Disconnect()
 		c.Errchan <- err
 		return
 	}
 	_, err = c.conn.Write([]byte(irc.NICK + " " + c.Nick))
 	if err != nil {
+		c.Disconnect()
 		c.Errchan <- err
 		return
 	}
+	c.connected = true
 	go func(c *Connection) {
 		for {
+			if !c.connected {
+				return
+			}
 			msg, err := c.conn.Decode()
 			if err != nil {
+				c.Disconnect()
 				c.Errchan <- err
 				return
 			}
