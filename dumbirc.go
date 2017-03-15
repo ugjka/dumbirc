@@ -41,7 +41,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		tls,
 		&irc.Conn{},
 		make(map[Event]func(Message)),
-		make(chan error, 1),
+		make(chan error),
 		false,
 	}
 }
@@ -69,9 +69,7 @@ func (c *Connection) Join(ch []string) {
 		_, err := c.conn.Write([]byte(irc.JOIN + " " + v))
 		if err != nil {
 			c.Disconnect()
-			if len(c.Errchan) == 0 {
-				c.Errchan <- err
-			}
+			c.Errchan <- err
 		}
 	}
 }
@@ -84,9 +82,7 @@ func (c *Connection) Pong() {
 	_, err := c.conn.Write([]byte(irc.PONG))
 	if err != nil {
 		c.Disconnect()
-		if len(c.Errchan) == 0 {
-			c.Errchan <- err
-		}
+		c.Errchan <- err
 	}
 }
 
@@ -98,9 +94,7 @@ func (c *Connection) Ping() {
 	_, err := c.conn.Write([]byte(irc.PING + " " + c.Server))
 	if err != nil {
 		c.Disconnect()
-		if len(c.Errchan) == 0 {
-			c.Errchan <- err
-		}
+		c.Errchan <- err
 	}
 }
 
@@ -112,9 +106,7 @@ func (c *Connection) PrivMsg(dest string, msg string) {
 	_, err := c.conn.Write([]byte(irc.PRIVMSG + " " + dest + " :" + msg))
 	if err != nil {
 		c.Disconnect()
-		if len(c.Errchan) == 0 {
-			c.Errchan <- err
-		}
+		c.Errchan <- err
 	}
 }
 
@@ -139,9 +131,7 @@ func (c *Connection) NewNick(n string) {
 	_, err := c.conn.Write([]byte(irc.NICK + " " + n))
 	if err != nil {
 		c.Disconnect()
-		if len(c.Errchan) == 0 {
-			c.Errchan <- err
-		}
+		c.Errchan <- err
 	}
 }
 
@@ -192,9 +182,7 @@ func (c *Connection) Start() {
 			msg, err := c.conn.Decode()
 			if err != nil {
 				c.Disconnect()
-				if len(c.Errchan) == 0 {
-					c.Errchan <- err
-				}
+				c.Errchan <- err
 				return
 			}
 			go c.runCallbacks(Message(*msg))
