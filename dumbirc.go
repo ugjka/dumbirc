@@ -41,7 +41,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		tls,
 		&irc.Conn{},
 		make(map[Event]func(Message)),
-		make(chan error),
+		make(chan error, 1),
 		false,
 	}
 }
