@@ -53,10 +53,8 @@ func (c *Connection) AddCallback(event Event, callback func(Message)) {
 
 // Run Callbacks
 func (c *Connection) runCallbacks(msg Message) {
-	for i, v := range c.callbacks {
-		if i == Event(msg.Command) {
-			v(msg)
-		}
+	if v, ok := c.callbacks[Event(msg.Command)]; ok {
+		v(msg)
 	}
 }
 
