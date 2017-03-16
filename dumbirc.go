@@ -146,6 +146,9 @@ func (c *Connection) Reply(msg Message, reply string) {
 
 // Start the bot
 func (c *Connection) Start() {
+	if c.connected {
+		return
+	}
 	if c.TLS {
 		tls, err := tls.Dial("tcp", c.Server, &tls.Config{})
 		if err != nil {
