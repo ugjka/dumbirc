@@ -46,6 +46,11 @@ func New(nick string, user string, server string, tls bool) *Connection {
 	}
 }
 
+//IsConnected returns connection status
+func (c *Connection) IsConnected() bool {
+	return c.connected
+}
+
 //AddCallback Adds callback to an event
 func (c *Connection) AddCallback(event Event, callback func(Message)) {
 	c.callbacks[event] = callback
