@@ -28,6 +28,7 @@ type Message irc.Message
 const (
 	PRIVMSG   Event = irc.PRIVMSG
 	PING      Event = irc.PING
+	PONG      Event = irc.PONG
 	WELCOME   Event = irc.RPL_WELCOME
 	NICKTAKEN Event = irc.ERR_NICKNAMEINUSE
 )
