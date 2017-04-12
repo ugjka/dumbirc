@@ -123,8 +123,10 @@ func (c *Connection) PrivMsgBulk(list []string, msg string) {
 
 //Disconnect disconnects from irc
 func (c *Connection) Disconnect() {
+	if c.connected {
+		c.conn.Close()
+	}
 	c.connected = false
-	c.conn.Close()
 }
 
 //NewNick Changes nick
