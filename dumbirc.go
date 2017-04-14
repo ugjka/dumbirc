@@ -2,6 +2,7 @@ package dumbirc
 
 import (
 	"crypto/tls"
+	"sync"
 
 	irc "github.com/sorcix/irc"
 )
@@ -16,6 +17,7 @@ type Connection struct {
 	callbacks map[Event]func(Message)
 	Errchan   chan error
 	connected bool
+	sync.Mutex
 }
 
 // Event codes
@@ -44,11 +46,14 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		make(map[Event]func(Message)),
 		make(chan error),
 		false,
+		sync.Mutex{},
 	}
 }
 
 //IsConnected returns connection status
 func (c *Connection) IsConnected() bool {
+	c.Lock()
+	defer c.Unlock()
 	return c.connected
 }
 
@@ -67,9 +72,12 @@ func (c *Connection) runCallbacks(msg Message) {
 // Join channels
 func (c *Connection) Join(ch []string) {
 	for _, v := range ch {
+		c.Lock()
 		if !c.connected {
+			c.Unlock()
 			return
 		}
+		c.Unlock()
 		_, err := c.conn.Write([]byte(irc.JOIN + " " + v))
 		if err != nil {
 			c.Disconnect()
@@ -80,9 +88,12 @@ func (c *Connection) Join(ch []string) {
 
 //Pong sends pong
 func (c *Connection) Pong() {
+	c.Lock()
 	if !c.connected {
+		c.Unlock()
 		return
 	}
+	c.Unlock()
 	_, err := c.conn.Write([]byte(irc.PONG))
 	if err != nil {
 		c.Disconnect()
@@ -92,9 +103,12 @@ func (c *Connection) Pong() {
 
 //Ping sends ping
 func (c *Connection) Ping() {
+	c.Lock()
 	if !c.connected {
+		c.Unlock()
 		return
 	}
+	c.Unlock()
 	_, err := c.conn.Write([]byte(irc.PING + " " + c.Server))
 	if err != nil {
 		c.Disconnect()
@@ -104,9 +118,12 @@ func (c *Connection) Ping() {
 
 //PrivMsg sends privmessage
 func (c *Connection) PrivMsg(dest string, msg string) {
+	c.Lock()
 	if !c.connected {
+		c.Unlock()
 		return
 	}
+	c.Unlock()
 	_, err := c.conn.Write([]byte(irc.PRIVMSG + " " + dest + " :" + msg))
 	if err != nil {
 		c.Disconnect()
@@ -123,6 +140,8 @@ func (c *Connection) PrivMsgBulk(list []string, msg string) {
 
 //Disconnect disconnects from irc
 func (c *Connection) Disconnect() {
+	c.Lock()
+	defer c.Unlock()
 	if c.connected {
 		c.conn.Close()
 	}
@@ -131,9 +150,12 @@ func (c *Connection) Disconnect() {
 
 //NewNick Changes nick
 func (c *Connection) NewNick(n string) {
+	c.Lock()
 	if !c.connected {
+		c.Unlock()
 		return
 	}
+	c.Unlock()
 	_, err := c.conn.Write([]byte(irc.NICK + " " + n))
 	if err != nil {
 		c.Disconnect()
@@ -152,9 +174,12 @@ func (c *Connection) Reply(msg Message, reply string) {
 
 // Start the bot
 func (c *Connection) Start() {
+	c.Lock()
 	if c.connected {
+		c.Unlock()
 		return
 	}
+	c.Unlock()
 	if c.TLS {
 		tls, err := tls.Dial("tcp", c.Server, &tls.Config{})
 		if err != nil {
