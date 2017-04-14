@@ -33,6 +33,8 @@ const (
 	PONG      Event = irc.PONG
 	WELCOME   Event = irc.RPL_WELCOME
 	NICKTAKEN Event = irc.ERR_NICKNAMEINUSE
+	//Useful if you wanna check for activity
+	ANYMESSAGE Event = "ANY"
 )
 
 //New creates a new bot
@@ -64,6 +66,9 @@ func (c *Connection) AddCallback(event Event, callback func(Message)) {
 
 // Run Callbacks
 func (c *Connection) runCallbacks(msg Message) {
+	if v, ok := c.callbacks[ANYMESSAGE]; ok {
+		v(msg)
+	}
 	if v, ok := c.callbacks[Event(msg.Command)]; ok {
 		v(msg)
 	}
