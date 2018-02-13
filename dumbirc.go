@@ -18,15 +18,22 @@ type Connection struct {
 	Errchan   chan error
 	connected bool
 	sync.Mutex
+	triggers []Trigger
 }
 
-// Event codes
+//Trigger scheme
+type Trigger struct {
+	Condition func(Message) bool
+	Response  func(Message)
+}
+
+//Event codes
 type Event string
 
 //Message event
 type Message irc.Message
 
-// Map event codes
+//Map event codes
 const (
 	PRIVMSG   Event = irc.PRIVMSG
 	PING      Event = irc.PING
@@ -49,6 +56,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		make(chan error),
 		false,
 		sync.Mutex{},
+		make([]Trigger, 0),
 	}
 }
 
@@ -64,7 +72,21 @@ func (c *Connection) AddCallback(event Event, callback func(Message)) {
 	c.callbacks[event] = callback
 }
 
-// Run Callbacks
+//AddTrigger adds triggers
+func (c *Connection) AddTrigger(t Trigger) {
+	c.triggers = append(c.triggers, t)
+}
+
+//Run Triggers
+func (c *Connection) runTriggers(msg Message) {
+	for _, v := range c.triggers {
+		if v.Condition(msg) {
+			v.Response(msg)
+		}
+	}
+}
+
+//Run Callbacks
 func (c *Connection) runCallbacks(msg Message) {
 	if v, ok := c.callbacks[ANYMESSAGE]; ok {
 		v(msg)
@@ -74,7 +96,7 @@ func (c *Connection) runCallbacks(msg Message) {
 	}
 }
 
-// Join channels
+//Join channels
 func (c *Connection) Join(ch []string) {
 	for _, v := range ch {
 		if !c.IsConnected() {
@@ -209,6 +231,7 @@ func (c *Connection) Start() {
 				return
 			}
 			go c.runCallbacks(Message(*msg))
+			go c.runTriggers(Message(*msg))
 		}
 	}(c)
 
