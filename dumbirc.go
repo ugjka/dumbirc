@@ -63,9 +63,8 @@ func New(nick string, user string, server string, tls bool) *Connection {
 //IsConnected returns connection status
 func (c *Connection) IsConnected() bool {
 	c.RLock()
-	res := c.connected
 	defer c.RUnlock()
-	return res
+	return c.connected
 }
 
 //AddCallback Adds callback to an event
