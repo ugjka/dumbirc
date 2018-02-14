@@ -17,7 +17,7 @@ type Connection struct {
 	callbacks map[Event]func(Message)
 	Errchan   chan error
 	connected bool
-	sync.Mutex
+	sync.RWMutex
 	triggers []Trigger
 }
 
@@ -31,7 +31,7 @@ type Trigger struct {
 type Event string
 
 //Message event
-type Message irc.Message
+type Message *irc.Message
 
 //Map event codes
 const (
@@ -55,15 +55,15 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		make(map[Event]func(Message)),
 		make(chan error),
 		false,
-		sync.Mutex{},
+		sync.RWMutex{},
 		make([]Trigger, 0),
 	}
 }
 
 //IsConnected returns connection status
 func (c *Connection) IsConnected() bool {
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 	return c.connected
 }
 
@@ -230,8 +230,8 @@ func (c *Connection) Start() {
 				c.Errchan <- err
 				return
 			}
-			go c.runCallbacks(Message(*msg))
-			go c.runTriggers(Message(*msg))
+			go c.runCallbacks(Message(msg))
+			go c.runTriggers(Message(msg))
 		}
 	}(c)
 
