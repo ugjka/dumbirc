@@ -19,6 +19,8 @@ type Connection struct {
 	connected bool
 	sync.RWMutex
 	triggers []Trigger
+	//Fake Connected status
+	DebugFakeConn bool
 }
 
 //Trigger scheme
@@ -67,6 +69,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		false,
 		sync.RWMutex{},
 		make([]Trigger, 0),
+		false,
 	}
 }
 
@@ -202,7 +205,7 @@ func (c *Connection) Reply(msg *Message, reply string) {
 
 // Start the bot
 func (c *Connection) Start() {
-	if c.IsConnected() {
+	if c.IsConnected() || c.DebugFakeConn {
 		return
 	}
 	if c.TLS {
