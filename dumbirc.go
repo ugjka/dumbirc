@@ -14,7 +14,7 @@ type Connection struct {
 	Server    string
 	TLS       bool
 	conn      *irc.Conn
-	callbacks map[Event]func(*Message)
+	callbacks map[string]func(*Message)
 	Errchan   chan error
 	connected bool
 	sync.RWMutex
@@ -35,18 +35,26 @@ type Message struct {
 	*irc.Message
 }
 
+//NewMessage returns an empty message
+func NewMessage() *Message {
+	msg := new(irc.Message)
+	msg.Prefix = new(irc.Prefix)
+	msg.Params = make([]string, 0)
+	return &Message{msg}
+}
+
 //Map event codes
 const (
-	PRIVMSG   Event = irc.PRIVMSG
-	PING      Event = irc.PING
-	PONG      Event = irc.PONG
-	WELCOME   Event = irc.RPL_WELCOME
-	NICKTAKEN Event = irc.ERR_NICKNAMEINUSE
+	PRIVMSG   = irc.PRIVMSG
+	PING      = irc.PING
+	PONG      = irc.PONG
+	WELCOME   = irc.RPL_WELCOME
+	NICKTAKEN = irc.ERR_NICKNAMEINUSE
 	//Useful if you wanna check for activity
-	ANYMESSAGE Event = "ANY"
+	ANYMESSAGE = "ANY"
 )
 
-//New creates a new bot
+//New creates a new irc object
 func New(nick string, user string, server string, tls bool) *Connection {
 	return &Connection{
 		nick,
@@ -54,7 +62,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		server,
 		tls,
 		&irc.Conn{},
-		make(map[Event]func(*Message)),
+		make(map[string]func(*Message)),
 		make(chan error),
 		false,
 		sync.RWMutex{},
@@ -70,7 +78,7 @@ func (c *Connection) IsConnected() bool {
 }
 
 //AddCallback Adds callback to an event
-func (c *Connection) AddCallback(event Event, callback func(*Message)) {
+func (c *Connection) AddCallback(event string, callback func(*Message)) {
 	c.callbacks[event] = callback
 }
 
@@ -93,7 +101,7 @@ func (c *Connection) RunCallbacks(msg *Message) {
 	if v, ok := c.callbacks[ANYMESSAGE]; ok {
 		v(msg)
 	}
-	if v, ok := c.callbacks[Event(msg.Command)]; ok {
+	if v, ok := c.callbacks[msg.Command]; ok {
 		v(msg)
 	}
 }
@@ -150,6 +158,9 @@ func (c *Connection) PrivMsg(dest string, msg string) {
 
 //PrivMsgBulk sends message to many
 func (c *Connection) PrivMsgBulk(list []string, msg string) {
+	if !c.IsConnected() {
+		return
+	}
 	for _, k := range list {
 		c.PrivMsg(k, msg)
 	}
@@ -157,12 +168,12 @@ func (c *Connection) PrivMsgBulk(list []string, msg string) {
 
 //Disconnect disconnects from irc
 func (c *Connection) Disconnect() {
-	if c.IsConnected() {
+	c.Lock()
+	defer c.Unlock()
+	if c.connected == true {
 		c.conn.Close()
 	}
-	c.Lock()
 	c.connected = false
-	c.Unlock()
 }
 
 //NewNick Changes nick
@@ -179,6 +190,9 @@ func (c *Connection) NewNick(n string) {
 
 //Reply replies to a message
 func (c *Connection) Reply(msg *Message, reply string) {
+	if !c.IsConnected() {
+		return
+	}
 	if msg.Params[0] == c.Nick {
 		c.PrivMsg(msg.Name, reply)
 	} else {
