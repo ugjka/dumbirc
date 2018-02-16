@@ -14,7 +14,7 @@ type Connection struct {
 	Server    string
 	TLS       bool
 	conn      *irc.Conn
-	callbacks map[Event]func(Message)
+	callbacks map[Event]func(*Message)
 	Errchan   chan error
 	connected bool
 	sync.RWMutex
@@ -23,15 +23,17 @@ type Connection struct {
 
 //Trigger scheme
 type Trigger struct {
-	Condition func(Message) bool
-	Response  func(Message)
+	Condition func(*Message) bool
+	Response  func(*Message)
 }
 
 //Event codes
 type Event string
 
 //Message event
-type Message *irc.Message
+type Message struct {
+	*irc.Message
+}
 
 //Map event codes
 const (
@@ -52,7 +54,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		server,
 		tls,
 		&irc.Conn{},
-		make(map[Event]func(Message)),
+		make(map[Event]func(*Message)),
 		make(chan error),
 		false,
 		sync.RWMutex{},
@@ -68,7 +70,7 @@ func (c *Connection) IsConnected() bool {
 }
 
 //AddCallback Adds callback to an event
-func (c *Connection) AddCallback(event Event, callback func(Message)) {
+func (c *Connection) AddCallback(event Event, callback func(*Message)) {
 	c.callbacks[event] = callback
 }
 
@@ -77,8 +79,8 @@ func (c *Connection) AddTrigger(t Trigger) {
 	c.triggers = append(c.triggers, t)
 }
 
-//Run Triggers
-func (c *Connection) runTriggers(msg Message) {
+//RunTriggers ...
+func (c *Connection) RunTriggers(msg *Message) {
 	for _, v := range c.triggers {
 		if v.Condition(msg) {
 			v.Response(msg)
@@ -86,8 +88,8 @@ func (c *Connection) runTriggers(msg Message) {
 	}
 }
 
-//Run Callbacks
-func (c *Connection) runCallbacks(msg Message) {
+//RunCallbacks ...
+func (c *Connection) RunCallbacks(msg *Message) {
 	if v, ok := c.callbacks[ANYMESSAGE]; ok {
 		v(msg)
 	}
@@ -176,7 +178,7 @@ func (c *Connection) NewNick(n string) {
 }
 
 //Reply replies to a message
-func (c *Connection) Reply(msg Message, reply string) {
+func (c *Connection) Reply(msg *Message, reply string) {
 	if msg.Params[0] == c.Nick {
 		c.PrivMsg(msg.Name, reply)
 	} else {
@@ -224,14 +226,15 @@ func (c *Connection) Start() {
 			if !c.IsConnected() {
 				return
 			}
-			msg, err := c.conn.Decode()
+			raw, err := c.conn.Decode()
 			if err != nil {
 				c.Disconnect()
 				c.Errchan <- err
 				return
 			}
-			go c.runCallbacks(Message(msg))
-			go c.runTriggers(Message(msg))
+			msg := &Message{raw}
+			go c.RunCallbacks(msg)
+			go c.RunTriggers(msg)
 		}
 	}(c)
 
