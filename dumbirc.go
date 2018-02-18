@@ -29,9 +29,6 @@ type Trigger struct {
 	Response  func(*Message)
 }
 
-//Event codes
-type Event string
-
 //Message event
 type Message struct {
 	*irc.Message
@@ -147,8 +144,8 @@ func (c *Connection) Ping() {
 	}
 }
 
-//PrivMsg sends privmessage
-func (c *Connection) PrivMsg(dest string, msg string) {
+//Msg sends privmessage
+func (c *Connection) Msg(dest string, msg string) {
 	if !c.IsConnected() {
 		return
 	}
@@ -159,13 +156,13 @@ func (c *Connection) PrivMsg(dest string, msg string) {
 	}
 }
 
-//PrivMsgBulk sends message to many
-func (c *Connection) PrivMsgBulk(list []string, msg string) {
+//MsgBulk sends message to many
+func (c *Connection) MsgBulk(list []string, msg string) {
 	if !c.IsConnected() {
 		return
 	}
 	for _, k := range list {
-		c.PrivMsg(k, msg)
+		c.Msg(k, msg)
 	}
 }
 
@@ -197,9 +194,9 @@ func (c *Connection) Reply(msg *Message, reply string) {
 		return
 	}
 	if msg.Params[0] == c.Nick {
-		c.PrivMsg(msg.Name, reply)
+		c.Msg(msg.Name, reply)
 	} else {
-		c.PrivMsg(msg.Params[0], reply)
+		c.Msg(msg.Params[0], reply)
 	}
 }
 
