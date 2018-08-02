@@ -49,6 +49,7 @@ const (
 	PONG      = irc.PONG
 	WELCOME   = irc.RPL_WELCOME
 	NICKTAKEN = irc.ERR_NICKNAMEINUSE
+	JOIN      = irc.JOIN
 	//Useful if you wanna check for activity
 	ANYMESSAGE = "ANY"
 )
