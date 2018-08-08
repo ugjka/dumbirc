@@ -2,7 +2,11 @@ package dumbirc
 
 import (
 	"crypto/tls"
+	"io"
+	"log"
+	"strings"
 	"sync"
+	"time"
 
 	irc "github.com/sorcix/irc"
 )
@@ -21,6 +25,7 @@ type Connection struct {
 	triggers []Trigger
 	//Fake Connected status
 	DebugFakeConn bool
+	Log           *log.Logger
 }
 
 //Trigger scheme
@@ -68,7 +73,20 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		sync.RWMutex{},
 		make([]Trigger, 0),
 		false,
+		log.New(&devnull{}, "", log.Ldate|log.Ltime),
 	}
+}
+
+type devnull struct {
+}
+
+func (d *devnull) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}
+
+//SetLogOutput sets where to log
+func (c *Connection) SetLogOutput(w io.Writer) {
+	c.Log.SetOutput(w)
 }
 
 //IsConnected returns connection status
@@ -199,6 +217,59 @@ func (c *Connection) Reply(msg *Message, reply string) {
 	} else {
 		c.Msg(msg.Params[0], reply)
 	}
+}
+
+func changeNick(n string) string {
+	if len(n) < 16 {
+		n += "_"
+		return n
+	}
+	n = strings.TrimRight(n, "_")
+	if len(n) > 12 {
+		n = n[:12] + "_"
+	}
+	return n
+}
+
+//HandleNickTaken changes nick when nick taken
+func (c *Connection) HandleNickTaken() {
+	c.AddCallback(NICKTAKEN, func(msg *Message) {
+		c.Log.Printf("nick %s taken, changing nick", c.Nick)
+		c.Nick = changeNick(c.Nick)
+		c.NewNick(c.Nick)
+	})
+}
+
+func pingpong(c chan bool) {
+	select {
+	case c <- true:
+	default:
+		return
+	}
+}
+
+//HandlePingPong replies to and sends pings
+func (c *Connection) HandlePingPong() {
+	c.AddCallback(PING, func(msg *Message) {
+		c.Log.Println("got ping sending pong")
+		c.Pong()
+	})
+	pp := make(chan bool, 1)
+	c.AddCallback(ANYMESSAGE, func(msg *Message) {
+		pingpong(pp)
+	})
+	pingTick := time.NewTicker(time.Minute * 1)
+	go func(tick *time.Ticker) {
+		for range tick.C {
+			select {
+			case <-pp:
+				c.Log.Println("sending ping")
+				c.Ping()
+			default:
+				c.Log.Println("got no pong")
+			}
+		}
+	}(pingTick)
 }
 
 // Start the bot
