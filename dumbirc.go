@@ -11,6 +11,9 @@ import (
 	irc "github.com/sorcix/irc"
 )
 
+//TODO
+// add debug logging
+
 //Connection Settings
 type Connection struct {
 	Nick      string
