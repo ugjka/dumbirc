@@ -274,6 +274,14 @@ func (c *Connection) HandlePingPong() {
 	}(pingTick)
 }
 
+//HandleJoin joins channels on welcome
+func (c *Connection) HandleJoin(chans []string) {
+	c.AddCallback(WELCOME, func(msg *Message) {
+		c.Log.Println("joining channels")
+		c.Join(chans)
+	})
+}
+
 // Start the bot
 func (c *Connection) Start() {
 	if c.IsConnected() || c.DebugFakeConn {
