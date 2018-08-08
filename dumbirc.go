@@ -263,7 +263,6 @@ func (c *Connection) HandlePingPong() {
 		for range tick.C {
 			select {
 			case <-pp:
-				c.Log.Println("sending ping")
 				c.Ping()
 			default:
 				c.Log.Println("got no pong")
