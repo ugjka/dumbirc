@@ -29,6 +29,8 @@ type Connection struct {
 	//Fake Connected status
 	DebugFakeConn bool
 	Log           *log.Logger
+	Debug         *log.Logger
+	Password      string
 }
 
 //Trigger scheme
@@ -77,6 +79,8 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		make([]Trigger, 0),
 		false,
 		log.New(&devnull{}, "", log.Ldate|log.Ltime),
+		log.New(&devnull{}, "debug", log.Ltime),
+		"",
 	}
 }
 
@@ -87,9 +91,19 @@ func (d *devnull) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+//SetPassword sets the irc password
+func (c *Connection) SetPassword(pass string) {
+	c.Password = pass
+}
+
 //SetLogOutput sets where to log
 func (c *Connection) SetLogOutput(w io.Writer) {
 	c.Log.SetOutput(w)
+}
+
+//EnableDebug enables irc message debugging
+func (c *Connection) EnableDebug(w io.Writer) {
+	c.Debug.SetOutput(w)
 }
 
 //IsConnected returns connection status
@@ -134,7 +148,9 @@ func (c *Connection) Join(ch []string) {
 		if !c.IsConnected() {
 			return
 		}
-		_, err := c.conn.Write([]byte(irc.JOIN + " " + v))
+		out := []byte(irc.JOIN + " " + v)
+		c.Debug.Printf("→ %s", out)
+		_, err := c.conn.Write(out)
 		if err != nil {
 			c.Disconnect()
 			c.Errchan <- err
@@ -147,7 +163,9 @@ func (c *Connection) Pong() {
 	if !c.IsConnected() {
 		return
 	}
-	_, err := c.conn.Write([]byte(irc.PONG))
+	out := []byte(irc.PONG)
+	c.Debug.Printf("→ %s", out)
+	_, err := c.conn.Write(out)
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
@@ -159,7 +177,9 @@ func (c *Connection) Ping() {
 	if !c.IsConnected() {
 		return
 	}
-	_, err := c.conn.Write([]byte(irc.PING + " " + c.Server))
+	out := []byte(irc.PING + " " + c.Server)
+	c.Debug.Printf("→ %s", out)
+	_, err := c.conn.Write(out)
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
@@ -171,7 +191,9 @@ func (c *Connection) Msg(dest string, msg string) {
 	if !c.IsConnected() {
 		return
 	}
-	_, err := c.conn.Write([]byte(irc.PRIVMSG + " " + dest + " :" + msg))
+	out := []byte(irc.PRIVMSG + " " + dest + " :" + msg)
+	c.Debug.Printf("→ %s", out)
+	_, err := c.conn.Write(out)
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
@@ -203,7 +225,9 @@ func (c *Connection) NewNick(n string) {
 	if !c.IsConnected() {
 		return
 	}
-	_, err := c.conn.Write([]byte(irc.NICK + " " + n))
+	out := []byte(irc.NICK + " " + n)
+	c.Debug.Printf("→ %s", out)
+	_, err := c.conn.Write(out)
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
@@ -302,13 +326,27 @@ func (c *Connection) Start() {
 			return
 		}
 	}
-	_, err := c.conn.Write([]byte("USER " + c.Nick + " +iw * :" + c.User))
+	if c.Password != "" {
+		out := []byte("PASS " + c.Password)
+		c.Debug.Printf("→ %s", out)
+		_, err := c.conn.Write(out)
+		if err != nil {
+			c.Disconnect()
+			c.Errchan <- err
+			return
+		}
+	}
+	out := []byte("USER " + c.Nick + " +iw * :" + c.User)
+	c.Debug.Printf("→ %s", out)
+	_, err := c.conn.Write(out)
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
 		return
 	}
-	_, err = c.conn.Write([]byte(irc.NICK + " " + c.Nick))
+	out = []byte(irc.NICK + " " + c.Nick)
+	c.Debug.Printf("→ %s", out)
+	_, err = c.conn.Write(out)
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
@@ -328,6 +366,7 @@ func (c *Connection) Start() {
 				c.Errchan <- err
 				return
 			}
+			c.Debug.Printf("← %s", raw)
 			msg := &Message{raw}
 			go c.RunCallbacks(msg)
 			go c.RunTriggers(msg)
