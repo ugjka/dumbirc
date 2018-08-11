@@ -60,6 +60,7 @@ const (
 	WELCOME   = irc.RPL_WELCOME
 	NICKTAKEN = irc.ERR_NICKNAMEINUSE
 	JOIN      = irc.JOIN
+	KICK      = irc.KICK
 	//Useful if you wanna check for activity
 	ANYMESSAGE = "ANY"
 )
