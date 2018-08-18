@@ -31,6 +31,8 @@ type Connection struct {
 	Log           *log.Logger
 	Debug         *log.Logger
 	Password      string
+	Send          chan []byte
+	Throttle      time.Duration
 }
 
 //Trigger scheme
@@ -82,6 +84,8 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		log.New(&devnull{}, "", log.Ldate|log.Ltime),
 		log.New(&devnull{}, "debug", log.Ltime),
 		"",
+		nil,
+		time.Millisecond * 500,
 	}
 }
 
@@ -90,6 +94,11 @@ type devnull struct {
 
 func (d *devnull) Write(p []byte) (n int, err error) {
 	return len(p), nil
+}
+
+//SetThrottle sets post delay
+func (c *Connection) SetThrottle(d time.Duration) {
+	c.Throttle = d
 }
 
 //SetPassword sets the irc password
@@ -149,13 +158,7 @@ func (c *Connection) Join(ch []string) {
 		if !c.IsConnected() {
 			return
 		}
-		out := []byte(irc.JOIN + " " + v)
-		c.Debug.Printf("→ %s", out)
-		_, err := c.conn.Write(out)
-		if err != nil {
-			c.Disconnect()
-			c.Errchan <- err
-		}
+		c.Send <- []byte(irc.JOIN + " " + v)
 	}
 }
 
@@ -164,13 +167,7 @@ func (c *Connection) Pong() {
 	if !c.IsConnected() {
 		return
 	}
-	out := []byte(irc.PONG)
-	c.Debug.Printf("→ %s", out)
-	_, err := c.conn.Write(out)
-	if err != nil {
-		c.Disconnect()
-		c.Errchan <- err
-	}
+	c.Send <- []byte(irc.PONG)
 }
 
 //Ping sends ping
@@ -178,13 +175,7 @@ func (c *Connection) Ping() {
 	if !c.IsConnected() {
 		return
 	}
-	out := []byte(irc.PING + " " + c.Server)
-	c.Debug.Printf("→ %s", out)
-	_, err := c.conn.Write(out)
-	if err != nil {
-		c.Disconnect()
-		c.Errchan <- err
-	}
+	c.Send <- []byte(irc.PING + " " + c.Server)
 }
 
 //Msg sends privmessage
@@ -192,13 +183,7 @@ func (c *Connection) Msg(dest string, msg string) {
 	if !c.IsConnected() {
 		return
 	}
-	out := []byte(irc.PRIVMSG + " " + dest + " :" + msg)
-	c.Debug.Printf("→ %s", out)
-	_, err := c.conn.Write(out)
-	if err != nil {
-		c.Disconnect()
-		c.Errchan <- err
-	}
+	c.Send <- []byte(irc.PRIVMSG + " " + dest + " :" + msg)
 }
 
 //MsgBulk sends message to many
@@ -216,9 +201,18 @@ func (c *Connection) Disconnect() {
 	c.Lock()
 	defer c.Unlock()
 	if c.connected == true {
+		c.connected = false
 		c.conn.Close()
+	Loop:
+		for {
+			select {
+			case <-c.Send:
+			default:
+				close(c.Send)
+				break Loop
+			}
+		}
 	}
-	c.connected = false
 }
 
 //NewNick Changes nick
@@ -226,13 +220,7 @@ func (c *Connection) NewNick(n string) {
 	if !c.IsConnected() {
 		return
 	}
-	out := []byte(irc.NICK + " " + n)
-	c.Debug.Printf("→ %s", out)
-	_, err := c.conn.Write(out)
-	if err != nil {
-		c.Disconnect()
-		c.Errchan <- err
-	}
+	c.Send <- []byte(irc.NICK + " " + n)
 }
 
 //Reply replies to a message
@@ -327,6 +315,10 @@ func (c *Connection) Start() {
 			return
 		}
 	}
+	c.Lock()
+	c.Send = make(chan []byte)
+	c.connected = true
+	c.Unlock()
 	if c.Password != "" {
 		out := []byte("PASS " + c.Password)
 		c.Debug.Printf("→ %s", out)
@@ -353,9 +345,6 @@ func (c *Connection) Start() {
 		c.Errchan <- err
 		return
 	}
-	c.Lock()
-	c.connected = true
-	c.Unlock()
 	go func(c *Connection) {
 		for {
 			if !c.IsConnected() {
@@ -371,6 +360,25 @@ func (c *Connection) Start() {
 			msg := &Message{raw}
 			go c.RunCallbacks(msg)
 			go c.RunTriggers(msg)
+		}
+	}(c)
+	go func(c *Connection) {
+		for {
+			if !c.IsConnected() {
+				return
+			}
+			v, ok := <-c.Send
+			if !ok {
+				return
+			}
+			c.Debug.Printf("→ %s", v)
+			_, err := c.conn.Write(v)
+			if err != nil {
+				c.Disconnect()
+				c.Errchan <- err
+				return
+			}
+			time.Sleep(c.Throttle)
 		}
 	}(c)
 
