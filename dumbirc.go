@@ -11,49 +11,6 @@ import (
 	irc "github.com/sorcix/irc"
 )
 
-//TODO
-// add debug logging
-
-//Connection Settings
-type Connection struct {
-	Nick      string
-	User      string
-	Server    string
-	TLS       bool
-	conn      *irc.Conn
-	callbacks map[string]func(*Message)
-	Errchan   chan error
-	connected bool
-	sync.RWMutex
-	triggers []Trigger
-	//Fake Connected status
-	DebugFakeConn bool
-	Log           *log.Logger
-	Debug         *log.Logger
-	Password      string
-	Send          chan []byte
-	Throttle      time.Duration
-}
-
-//Trigger scheme
-type Trigger struct {
-	Condition func(*Message) bool
-	Response  func(*Message)
-}
-
-//Message event
-type Message struct {
-	*irc.Message
-}
-
-//NewMessage returns an empty message
-func NewMessage() *Message {
-	msg := new(irc.Message)
-	msg.Prefix = new(irc.Prefix)
-	msg.Params = make([]string, 0)
-	return &Message{msg}
-}
-
 //Map event codes
 const (
 	PRIVMSG   = irc.PRIVMSG
@@ -67,26 +24,60 @@ const (
 	ANYMESSAGE = "ANY"
 )
 
+//Connection Settings
+type Connection struct {
+	Nick      string
+	User      string
+	Server    string
+	TLS       bool
+	Password  string
+	Throttle  time.Duration
+	connected bool
+	//Fake Connected status
+	DebugFakeConn bool
+	conn          *irc.Conn
+	callbacks     map[string]func(*Message)
+	triggers      []Trigger
+	Log           *log.Logger
+	Debug         *log.Logger
+	Errchan       chan error
+	Send          chan []byte
+	sync.RWMutex
+}
+
 //New creates a new irc object
 func New(nick string, user string, server string, tls bool) *Connection {
 	return &Connection{
-		nick,
-		user,
-		server,
-		tls,
-		&irc.Conn{},
-		make(map[string]func(*Message)),
-		make(chan error),
-		false,
-		sync.RWMutex{},
-		make([]Trigger, 0),
-		false,
-		log.New(&devnull{}, "", log.Ldate|log.Ltime),
-		log.New(&devnull{}, "debug", log.Ltime),
-		"",
-		nil,
-		time.Millisecond * 500,
+		Nick:          nick,
+		User:          user,
+		Server:        server,
+		TLS:           tls,
+		Password:      "",
+		Throttle:      time.Millisecond * 500,
+		DebugFakeConn: false,
+		connected:     false,
+		conn:          &irc.Conn{},
+		callbacks:     make(map[string]func(*Message)),
+		triggers:      make([]Trigger, 0),
+		Log:           log.New(&devnull{}, "", log.Ldate|log.Ltime),
+		Debug:         log.New(&devnull{}, "debug", log.Ltime),
+		Send:          nil,
+		Errchan:       make(chan error),
+		RWMutex:       sync.RWMutex{},
 	}
+}
+
+//Message event
+type Message struct {
+	*irc.Message
+}
+
+//NewMessage returns an empty message
+func NewMessage() *Message {
+	msg := new(irc.Message)
+	msg.Prefix = new(irc.Prefix)
+	msg.Params = make([]string, 0)
+	return &Message{msg}
 }
 
 type devnull struct {
@@ -126,6 +117,12 @@ func (c *Connection) IsConnected() bool {
 //AddCallback Adds callback to an event
 func (c *Connection) AddCallback(event string, callback func(*Message)) {
 	c.callbacks[event] = callback
+}
+
+//Trigger scheme
+type Trigger struct {
+	Condition func(*Message) bool
+	Response  func(*Message)
 }
 
 //AddTrigger adds triggers
@@ -196,25 +193,6 @@ func (c *Connection) MsgBulk(list []string, msg string) {
 	}
 }
 
-//Disconnect disconnects from irc
-func (c *Connection) Disconnect() {
-	c.Lock()
-	defer c.Unlock()
-	if c.connected == true {
-		c.connected = false
-		c.conn.Close()
-	Loop:
-		for {
-			select {
-			case <-c.Send:
-			default:
-				close(c.Send)
-				break Loop
-			}
-		}
-	}
-}
-
 //NewNick Changes nick
 func (c *Connection) NewNick(n string) {
 	if !c.IsConnected() {
@@ -232,6 +210,25 @@ func (c *Connection) Reply(msg *Message, reply string) {
 		c.Msg(msg.Name, reply)
 	} else {
 		c.Msg(msg.Params[0], reply)
+	}
+}
+
+//Disconnect disconnects from irc
+func (c *Connection) Disconnect() {
+	c.Lock()
+	defer c.Unlock()
+	if c.connected == true {
+		c.connected = false
+		c.conn.Close()
+	Loop:
+		for {
+			select {
+			case <-c.Send:
+			default:
+				close(c.Send)
+				break Loop
+			}
+		}
 	}
 }
 
