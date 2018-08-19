@@ -28,6 +28,7 @@ const (
 type Connection struct {
 	Nick      string
 	User      string
+	RealN     string
 	Server    string
 	TLS       bool
 	Password  string
@@ -48,22 +49,18 @@ type Connection struct {
 //New creates a new irc object
 func New(nick string, user string, server string, tls bool) *Connection {
 	return &Connection{
-		Nick:          nick,
-		User:          user,
-		Server:        server,
-		TLS:           tls,
-		Password:      "",
-		Throttle:      time.Millisecond * 500,
-		DebugFakeConn: false,
-		connected:     false,
-		conn:          &irc.Conn{},
-		callbacks:     make(map[string][]func(*Message)),
-		triggers:      make([]Trigger, 0),
-		Log:           log.New(&devNull{}, "", log.Ldate|log.Ltime),
-		Debug:         log.New(&devNull{}, "debug", log.Ltime),
-		Send:          nil,
-		Errchan:       make(chan error),
-		RWMutex:       sync.RWMutex{},
+		Nick:      nick,
+		User:      user,
+		Server:    server,
+		TLS:       tls,
+		Throttle:  time.Millisecond * 500,
+		conn:      &irc.Conn{},
+		callbacks: make(map[string][]func(*Message)),
+		triggers:  make([]Trigger, 0),
+		Log:       log.New(&devNull{}, "", log.Ldate|log.Ltime),
+		Debug:     log.New(&devNull{}, "debug", log.Ltime),
+		Errchan:   make(chan error),
+		RWMutex:   sync.RWMutex{},
 	}
 }
 
@@ -330,7 +327,10 @@ func (c *Connection) Start() {
 			return
 		}
 	}
-	out := []byte("USER " + c.User + " +iw * :" + c.User)
+	if c.RealN == "" {
+		c.RealN = c.User
+	}
+	out := []byte("USER " + c.User + " +iw * :" + c.RealN)
 	c.Debug.Printf("→ %s", out)
 	_, err := c.conn.Write(out)
 	if err != nil {
