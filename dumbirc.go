@@ -330,7 +330,7 @@ func (c *Connection) Start() {
 			return
 		}
 	}
-	out := []byte("USER " + c.Nick + " +iw * :" + c.User)
+	out := []byte("USER " + c.User + " +iw * :" + c.User)
 	c.Debug.Printf("→ %s", out)
 	_, err := c.conn.Write(out)
 	if err != nil {
