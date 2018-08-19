@@ -59,8 +59,8 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		conn:          &irc.Conn{},
 		callbacks:     make(map[string][]func(*Message)),
 		triggers:      make([]Trigger, 0),
-		Log:           log.New(&devnull{}, "", log.Ldate|log.Ltime),
-		Debug:         log.New(&devnull{}, "debug", log.Ltime),
+		Log:           log.New(&devNull{}, "", log.Ldate|log.Ltime),
+		Debug:         log.New(&devNull{}, "debug", log.Ltime),
 		Send:          nil,
 		Errchan:       make(chan error),
 		RWMutex:       sync.RWMutex{},
@@ -80,10 +80,10 @@ func NewMessage() *Message {
 	return &Message{msg}
 }
 
-type devnull struct {
+type devNull struct {
 }
 
-func (d *devnull) Write(p []byte) (n int, err error) {
+func (d *devNull) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
@@ -189,10 +189,10 @@ func (c *Connection) Msg(dest string, msg string) {
 
 //MsgBulk sends message to many
 func (c *Connection) MsgBulk(list []string, msg string) {
-	if !c.IsConnected() {
-		return
-	}
 	for _, k := range list {
+		if !c.IsConnected() {
+			return
+		}
 		c.Msg(k, msg)
 	}
 }
@@ -221,7 +221,7 @@ func (c *Connection) Reply(msg *Message, reply string) {
 func (c *Connection) Disconnect() {
 	c.Lock()
 	defer c.Unlock()
-	if c.connected == true {
+	if c.connected {
 		c.connected = false
 		c.conn.Close()
 	Loop:
