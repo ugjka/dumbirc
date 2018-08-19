@@ -36,7 +36,7 @@ type Connection struct {
 	//Fake Connected status
 	DebugFakeConn bool
 	conn          *irc.Conn
-	callbacks     map[string]func(*Message)
+	callbacks     map[string][]func(*Message)
 	triggers      []Trigger
 	Log           *log.Logger
 	Debug         *log.Logger
@@ -57,7 +57,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		DebugFakeConn: false,
 		connected:     false,
 		conn:          &irc.Conn{},
-		callbacks:     make(map[string]func(*Message)),
+		callbacks:     make(map[string][]func(*Message)),
 		triggers:      make([]Trigger, 0),
 		Log:           log.New(&devnull{}, "", log.Ldate|log.Ltime),
 		Debug:         log.New(&devnull{}, "debug", log.Ltime),
@@ -116,7 +116,7 @@ func (c *Connection) IsConnected() bool {
 
 //AddCallback Adds callback to an event
 func (c *Connection) AddCallback(event string, callback func(*Message)) {
-	c.callbacks[event] = callback
+	c.callbacks[event] = append(c.callbacks[event], callback)
 }
 
 //Trigger scheme
@@ -142,10 +142,14 @@ func (c *Connection) RunTriggers(msg *Message) {
 //RunCallbacks ...
 func (c *Connection) RunCallbacks(msg *Message) {
 	if v, ok := c.callbacks[ANYMESSAGE]; ok {
-		v(msg)
+		for _, v := range v {
+			v(msg)
+		}
 	}
 	if v, ok := c.callbacks[msg.Command]; ok {
-		v(msg)
+		for _, v := range v {
+			v(msg)
+		}
 	}
 }
 
