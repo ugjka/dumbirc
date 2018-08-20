@@ -2,8 +2,10 @@ package dumbirc
 
 import (
 	"crypto/tls"
+	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +22,7 @@ const (
 	NICKTAKEN = irc.ERR_NICKNAMEINUSE
 	JOIN      = irc.JOIN
 	KICK      = irc.KICK
+	NOTICE    = irc.NOTICE
 	//Useful if you wanna check for activity
 	ANYMESSAGE = "ANY"
 )
@@ -43,6 +46,8 @@ type Connection struct {
 	Debug         *log.Logger
 	Errchan       chan error
 	Send          chan []byte
+	incomingID    int
+	incoming      map[int]chan *Message
 	sync.RWMutex
 }
 
@@ -61,6 +66,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		Debug:     log.New(&devNull{}, "debug", log.Ltime),
 		Errchan:   make(chan error),
 		RWMutex:   sync.RWMutex{},
+		incoming:  make(map[int]chan *Message),
 	}
 }
 
@@ -82,6 +88,32 @@ type devNull struct {
 
 func (d *devNull) Write(p []byte) (n int, err error) {
 	return len(p), nil
+}
+
+// WaitFor will block until a message matching the given filter is received
+func (c *Connection) WaitFor(filter func(*Message) bool) {
+	if !c.IsConnected() {
+		return
+	}
+	c.Lock()
+	c.incomingID++
+	tmpID := c.incomingID
+	c.incoming[tmpID] = make(chan *Message)
+	c.Unlock()
+	defer func() {
+		c.Lock()
+		close(c.incoming[tmpID])
+		delete(c.incoming, tmpID)
+		c.Unlock()
+	}()
+	c.RLock()
+	defer c.RUnlock()
+	for mes := range c.incoming[tmpID] {
+		if filter(mes) {
+			return
+		}
+	}
+	return
 }
 
 //SetThrottle sets post delay
@@ -176,6 +208,14 @@ func (c *Connection) Ping() {
 	c.Send <- []byte(irc.PING + " " + c.Server)
 }
 
+//Cmd sends command
+func (c *Connection) Cmd(cmd string) {
+	if !c.IsConnected() {
+		return
+	}
+	c.Send <- []byte(cmd)
+}
+
 //Msg sends privmessage
 func (c *Connection) Msg(dest string, msg string) {
 	if !c.IsConnected() {
@@ -221,6 +261,10 @@ func (c *Connection) Disconnect() {
 	if c.connected {
 		c.connected = false
 		c.conn.Close()
+		for k := range c.incoming {
+			close(c.incoming[k])
+			delete(c.incoming, k)
+		}
 	Loop:
 		for {
 			select {
@@ -245,9 +289,37 @@ func changeNick(n string) string {
 	return n
 }
 
+//LogNotices logs notice messages
+func (c *Connection) LogNotices() {
+	c.AddCallback(NOTICE, func(m *Message) {
+		c.Log.Printf("NOTICE %s %s", m.Params[0], m.Trailing)
+	})
+}
+
 //HandleNickTaken changes nick when nick taken
 func (c *Connection) HandleNickTaken() {
 	c.AddCallback(NICKTAKEN, func(msg *Message) {
+		if c.Password != "" {
+			rand.Seed(time.Now().UnixNano())
+			tmp := ""
+			for i := 0; i < 4; i++ {
+				tmp += fmt.Sprintf("%d", rand.Intn(9))
+			}
+			if len(c.Nick) > 12 {
+				c.NewNick(c.Nick[:12] + tmp)
+			} else {
+				c.NewNick(c.Nick + tmp)
+			}
+			c.Log.Println("nick taken, GHOSTING " + c.Nick)
+			c.Msg("NickServ", "GHOST "+c.Nick+" "+c.Password)
+			c.WaitFor(func(m *Message) bool {
+				return m.Command == NOTICE &&
+					strings.Contains(m.Trailing, "has been ghosted")
+			})
+			c.NewNick(c.Nick)
+			c.Msg("NickServ", "identify "+c.Nick+" "+c.Password)
+			return
+		}
 		c.Log.Printf("nick %s taken, changing nick", c.Nick)
 		c.Nick = changeNick(c.Nick)
 		c.NewNick(c.Nick)
@@ -359,6 +431,11 @@ func (c *Connection) Start() {
 			}
 			c.Debug.Printf("← %s", raw)
 			msg := &Message{raw}
+			c.RLock()
+			for k := range c.incoming {
+				c.incoming[k] <- msg
+			}
+			c.RUnlock()
 			go c.RunCallbacks(msg)
 			go c.RunTriggers(msg)
 		}
