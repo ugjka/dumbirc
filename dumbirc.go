@@ -367,6 +367,7 @@ func (c *Connection) HandlePingPong() {
 //HandleJoin joins channels on welcome
 func (c *Connection) HandleJoin(chans []string) {
 	c.AddCallback(WELCOME, func(msg *Message) {
+		c.Chans = chans
 		c.Log.Println("joining channels")
 		c.Join(chans)
 	})

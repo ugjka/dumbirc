@@ -2,37 +2,35 @@ package main
 
 import (
 	"log"
-	"time"
+	"os"
+	"strings"
 
 	"github.com/ugjka/dumbirc"
 )
 
 func main() {
-	channels := []string{"#testy123"}
-	conn := dumbirc.New("testbbt", "bottob", "irc.freenode.net:7000", true)
-	conn.AddCallback(dumbirc.WELCOME, func(msg *dumbirc.Message) {
-		conn.Join(channels)
-	})
-	conn.AddCallback(dumbirc.PING, func(msg *dumbirc.Message) {
-		conn.Pong()
-	})
-	conn.AddCallback(dumbirc.PRIVMSG, func(msg *dumbirc.Message) {
+	channels := []string{"#test13246"}
+	irc := dumbirc.New("testnick2344", "testnick", "irc.freenode.net:7000", true)
+	irc.HandleJoin(channels)
+	irc.HandleNickTaken()
+	irc.HandlePingPong()
+	irc.LogNotices()
+	irc.SetLogOutput(os.Stdout)
+	//irc.EnableDebug(os.Stdout)
+	irc.AddCallback(dumbirc.PRIVMSG, func(msg *dumbirc.Message) {
 		if msg.Trailing == "hello" {
-			conn.Reply(msg, "Hi, How are you?")
+			irc.Reply(msg, "Hi, How are you?")
 		}
 	})
-	conn.AddCallback(dumbirc.NICKTAKEN, func(msg *dumbirc.Message) {
-		conn.Nick += "_"
-		conn.NewNick(conn.Nick)
+	irc.AddTrigger(dumbirc.Trigger{
+		Condition: func(m *dumbirc.Message) bool {
+			return m.Command == dumbirc.KICK && strings.HasPrefix(m.Params[1], irc.Nick)
+		},
+		Response: func(m *dumbirc.Message) {
+			irc.Join([]string{m.Params[0]})
+		},
 	})
-	conn.Start()
-	//Ping the server
-	go func() {
-		for {
-			time.Sleep(time.Minute)
-			conn.Ping()
-		}
-	}()
+	irc.Start()
 	//If error then exit
-	log.Println(<-conn.Errchan)
+	log.Println(<-irc.Errchan)
 }
