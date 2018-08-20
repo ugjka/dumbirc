@@ -104,7 +104,15 @@ func (c *Connection) WaitFor(filter func(*Message) bool) {
 	c.incomingMu.Unlock()
 	defer func() {
 		c.incomingMu.Lock()
-		close(c.incoming[tmpID])
+	Loop:
+		for {
+			select {
+			case <-c.incoming[tmpID]:
+			default:
+				close(c.incoming[tmpID])
+				break Loop
+			}
+		}
 		delete(c.incoming, tmpID)
 		c.incomingMu.Unlock()
 	}()
@@ -366,6 +374,11 @@ func (c *Connection) HandlePingPong() {
 //HandleJoin joins channels on welcome
 func (c *Connection) HandleJoin(chans []string) {
 	c.AddCallback(WELCOME, func(msg *Message) {
+		if c.Password != "" {
+			c.WaitFor(func(m *Message) bool {
+				return m.Command == NOTICE && strings.Contains(m.Trailing, "You are now identified for")
+			})
+		}
 		c.Log.Println("joining channels")
 		c.Join(chans)
 	})
