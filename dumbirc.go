@@ -32,7 +32,6 @@ type Connection struct {
 	Nick      string
 	User      string
 	RealN     string
-	Chans     []string
 	Server    string
 	TLS       bool
 	Password  string
@@ -49,26 +48,27 @@ type Connection struct {
 	Send          chan []byte
 	incomingID    int
 	incoming      map[int]chan *Message
+	incomingMu    sync.RWMutex
 	sync.RWMutex
 }
 
 //New creates a new irc object
 func New(nick string, user string, server string, tls bool) *Connection {
 	return &Connection{
-		Nick:      nick,
-		User:      user,
-		Chans:     make([]string, 0),
-		Server:    server,
-		TLS:       tls,
-		Throttle:  time.Millisecond * 500,
-		conn:      &irc.Conn{},
-		callbacks: make(map[string][]func(*Message)),
-		triggers:  make([]Trigger, 0),
-		Log:       log.New(&devNull{}, "", log.Ldate|log.Ltime),
-		Debug:     log.New(&devNull{}, "debug", log.Ltime),
-		Errchan:   make(chan error),
-		RWMutex:   sync.RWMutex{},
-		incoming:  make(map[int]chan *Message),
+		Nick:       nick,
+		User:       user,
+		Server:     server,
+		TLS:        tls,
+		Throttle:   time.Millisecond * 500,
+		conn:       &irc.Conn{},
+		callbacks:  make(map[string][]func(*Message)),
+		triggers:   make([]Trigger, 0),
+		Log:        log.New(&devNull{}, "", log.Ldate|log.Ltime),
+		Debug:      log.New(&devNull{}, "debug", log.Ltime),
+		Errchan:    make(chan error),
+		RWMutex:    sync.RWMutex{},
+		incoming:   make(map[int]chan *Message),
+		incomingMu: sync.RWMutex{},
 	}
 }
 
@@ -97,19 +97,17 @@ func (c *Connection) WaitFor(filter func(*Message) bool) {
 	if !c.IsConnected() {
 		return
 	}
-	c.Lock()
+	c.incomingMu.Lock()
 	c.incomingID++
 	tmpID := c.incomingID
 	c.incoming[tmpID] = make(chan *Message)
-	c.Unlock()
+	c.incomingMu.Unlock()
 	defer func() {
-		c.Lock()
+		c.incomingMu.Lock()
 		close(c.incoming[tmpID])
 		delete(c.incoming, tmpID)
-		c.Unlock()
+		c.incomingMu.Unlock()
 	}()
-	c.RLock()
-	defer c.RUnlock()
 	for mes := range c.incoming[tmpID] {
 		if filter(mes) {
 			return
@@ -263,10 +261,12 @@ func (c *Connection) Disconnect() {
 	if c.connected {
 		c.connected = false
 		c.conn.Close()
+		c.incomingMu.Lock()
 		for k := range c.incoming {
 			close(c.incoming[k])
 			delete(c.incoming, k)
 		}
+		c.incomingMu.Unlock()
 	Loop:
 		for {
 			select {
@@ -324,7 +324,6 @@ func (c *Connection) HandleNickTaken() {
 				return m.Command == NOTICE &&
 					strings.Contains(m.Trailing, "You are now identified")
 			})
-			c.Join(c.Chans)
 			return
 		}
 		c.Log.Printf("nick %s taken, changing nick", c.Nick)
@@ -367,7 +366,6 @@ func (c *Connection) HandlePingPong() {
 //HandleJoin joins channels on welcome
 func (c *Connection) HandleJoin(chans []string) {
 	c.AddCallback(WELCOME, func(msg *Message) {
-		c.Chans = chans
 		c.Log.Println("joining channels")
 		c.Join(chans)
 	})
@@ -439,11 +437,11 @@ func (c *Connection) Start() {
 			}
 			c.Debug.Printf("← %s", raw)
 			msg := &Message{raw}
-			c.RLock()
+			c.incomingMu.RLock()
 			for k := range c.incoming {
 				c.incoming[k] <- msg
 			}
-			c.RUnlock()
+			c.incomingMu.RUnlock()
 			go c.RunCallbacks(msg)
 			go c.RunTriggers(msg)
 		}
