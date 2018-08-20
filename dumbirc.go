@@ -32,6 +32,7 @@ type Connection struct {
 	Nick      string
 	User      string
 	RealN     string
+	Chans     []string
 	Server    string
 	TLS       bool
 	Password  string
@@ -56,6 +57,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 	return &Connection{
 		Nick:      nick,
 		User:      user,
+		Chans:     make([]string, 0),
 		Server:    server,
 		TLS:       tls,
 		Throttle:  time.Millisecond * 500,
@@ -318,6 +320,11 @@ func (c *Connection) HandleNickTaken() {
 			})
 			c.NewNick(c.Nick)
 			c.Msg("NickServ", "identify "+c.Nick+" "+c.Password)
+			c.WaitFor(func(m *Message) bool {
+				return m.Command == NOTICE &&
+					strings.Contains(m.Trailing, "You are now identified")
+			})
+			c.Join(c.Chans)
 			return
 		}
 		c.Log.Printf("nick %s taken, changing nick", c.Nick)
