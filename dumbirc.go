@@ -50,6 +50,7 @@ type Connection struct {
 	incoming      map[int]chan *Message
 	incomingMu    sync.RWMutex
 	sync.RWMutex
+	sync.WaitGroup
 }
 
 //New creates a new irc object
@@ -69,6 +70,7 @@ func New(nick string, user string, server string, tls bool) *Connection {
 		RWMutex:    sync.RWMutex{},
 		incoming:   make(map[int]chan *Message),
 		incomingMu: sync.RWMutex{},
+		WaitGroup:  sync.WaitGroup{},
 	}
 }
 
@@ -386,6 +388,7 @@ func (c *Connection) HandleJoin(chans []string) {
 
 // Start the bot
 func (c *Connection) Start() {
+	c.Wait()
 	if c.IsConnected() || c.DebugFakeConn {
 		return
 	}
@@ -437,7 +440,9 @@ func (c *Connection) Start() {
 		c.Errchan <- err
 		return
 	}
+	c.Add(2)
 	go func(c *Connection) {
+		defer c.Done()
 		for {
 			if !c.IsConnected() {
 				return
@@ -460,6 +465,7 @@ func (c *Connection) Start() {
 		}
 	}(c)
 	go func(c *Connection) {
+		defer c.Done()
 		for {
 			if !c.IsConnected() {
 				return
