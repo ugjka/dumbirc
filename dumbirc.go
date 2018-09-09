@@ -54,7 +54,7 @@ type Connection struct {
 }
 
 //New creates a new irc object
-func New(nick string, user string, server string, tls bool) *Connection {
+func New(nick, user, server string, tls bool) *Connection {
 	return &Connection{
 		Nick:       nick,
 		User:       user,
@@ -227,7 +227,7 @@ func (c *Connection) Cmd(cmd string) {
 }
 
 //Msg sends privmessage
-func (c *Connection) Msg(dest string, msg string) {
+func (c *Connection) Msg(dest, msg string) {
 	if !c.IsConnected() {
 		return
 	}
