@@ -51,7 +51,7 @@ type Connection struct {
 	Log           *log.Logger
 	Debug         *log.Logger
 	Errchan       chan error
-	Send          chan []byte
+	Send          chan string
 	incomingID    int
 	incoming      map[int]chan *Message
 	incomingMu    sync.RWMutex
@@ -221,7 +221,7 @@ func (c *Connection) Join(ch []string) {
 		if !c.IsConnected() {
 			return
 		}
-		c.Send <- []byte(irc.JOIN + " " + v)
+		c.Send <- irc.JOIN + " " + v
 	}
 }
 
@@ -232,7 +232,7 @@ func (c *Connection) ChMode(user, channel, mode string) {
 	if !c.IsConnected() {
 		return
 	}
-	c.Send <- []byte("MODE " + channel + " " + mode + " " + user)
+	c.Send <- "MODE " + channel + " " + mode + " " + user
 }
 
 // Topic sets the channel 'ch' topic (requires bot has proper permissions)
@@ -241,7 +241,7 @@ func (c *Connection) Topic(ch, topic string) {
 		return
 	}
 	str := fmt.Sprintf("TOPIC %s :%s", ch, topic)
-	c.Send <- []byte(str)
+	c.Send <- str
 }
 
 // Action sends an action to 'dest' (user or channel)
@@ -260,13 +260,13 @@ func (c *Connection) Notice(dest, msg string) {
 		if !c.IsConnected() {
 			return
 		}
-		c.Send <- []byte("NOTICE " + dest + " :" + msg[:400])
+		c.Send <- "NOTICE " + dest + " :" + msg[:400]
 		msg = msg[400:]
 	}
 	if !c.IsConnected() {
 		return
 	}
-	c.Send <- []byte("NOTICE " + dest + " :" + msg)
+	c.Send <- "NOTICE " + dest + " :" + msg
 }
 
 //Pong sends pong
@@ -274,7 +274,7 @@ func (c *Connection) Pong() {
 	if !c.IsConnected() {
 		return
 	}
-	c.Send <- []byte(irc.PONG)
+	c.Send <- irc.PONG
 }
 
 //Ping sends ping
@@ -282,7 +282,7 @@ func (c *Connection) Ping() {
 	if !c.IsConnected() {
 		return
 	}
-	c.Send <- []byte(irc.PING + " " + c.Server)
+	c.Send <- irc.PING + " " + c.Server
 }
 
 //Cmd sends command
@@ -290,7 +290,7 @@ func (c *Connection) Cmd(cmd string) {
 	if !c.IsConnected() {
 		return
 	}
-	c.Send <- []byte(cmd)
+	c.Send <- cmd
 }
 
 //Msg sends privmessage
@@ -300,13 +300,13 @@ func (c *Connection) Msg(dest, msg string) {
 		if !c.IsConnected() {
 			return
 		}
-		c.Send <- []byte(irc.PRIVMSG + " " + dest + " :" + msg[:400])
+		c.Send <- irc.PRIVMSG + " " + dest + " :" + msg[:400]
 		msg = msg[400:]
 	}
 	if !c.IsConnected() {
 		return
 	}
-	c.Send <- []byte(irc.PRIVMSG + " " + dest + " :" + msg)
+	c.Send <- irc.PRIVMSG + " " + dest + " :" + msg
 }
 
 //MsgBulk sends message to many
@@ -324,7 +324,7 @@ func (c *Connection) NewNick(n string) {
 	if !c.IsConnected() {
 		return
 	}
-	c.Send <- []byte(irc.NICK + " " + n)
+	c.Send <- irc.NICK + " " + n
 }
 
 //Reply replies to a message
@@ -483,13 +483,13 @@ func (c *Connection) Start() {
 		}
 	}
 	c.Lock()
-	c.Send = make(chan []byte)
+	c.Send = make(chan string)
 	c.connected = true
 	c.Unlock()
 	if c.Password != "" {
-		out := []byte("PASS " + c.Password)
+		out := "PASS " + c.Password
 		c.Debug.Printf("→ %s", out)
-		_, err := c.conn.Write(out)
+		_, err := fmt.Fprintf(c.conn, "%s%s", out, "\r\n")
 		if err != nil {
 			c.Disconnect()
 			c.Errchan <- err
@@ -499,17 +499,17 @@ func (c *Connection) Start() {
 	if c.RealN == "" {
 		c.RealN = c.User
 	}
-	out := []byte("USER " + c.User + " +iw * :" + c.RealN)
+	out := "USER " + c.User + " +iw * :" + c.RealN
 	c.Debug.Printf("→ %s", out)
-	_, err := c.conn.Write(out)
+	_, err := fmt.Fprintf(c.conn, "%s%s", out, "\r\n")
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
 		return
 	}
-	out = []byte(irc.NICK + " " + c.Nick)
+	out = irc.NICK + " " + c.Nick
 	c.Debug.Printf("→ %s", out)
-	_, err = c.conn.Write(out)
+	_, err = fmt.Fprintf(c.conn, "%s%s", out, "\r\n")
 	if err != nil {
 		c.Disconnect()
 		c.Errchan <- err
