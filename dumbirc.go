@@ -13,6 +13,12 @@ import (
 	irc "github.com/sorcix/irc"
 )
 
+var replacer *strings.Replacer
+
+func init() {
+	replacer = strings.NewReplacer("\n", " ", "\t", " ", "\a", " ", "\b", " ", "\f", " ", "\r", " ", "\v", " ")
+}
+
 //Map event codes
 const (
 	PRIVMSG   = irc.PRIVMSG
@@ -77,6 +83,23 @@ func New(nick, user, server string, tls bool) *Connection {
 //Message event
 type Message struct {
 	*irc.Message
+	Content   string
+	TimeStamp time.Time
+	To        string
+}
+
+//ParseMessage converts irc.Message to Message
+func ParseMessage(raw *irc.Message) (m *Message) {
+	m = new(Message)
+	m.Message = raw
+	m.Content = m.Trailing
+	if len(m.Params) > 0 {
+		m.To = m.Params[0]
+	} else if m.Command == JOIN {
+		m.To = m.Trailing
+	}
+	m.TimeStamp = time.Now()
+	return m
 }
 
 //NewMessage returns an empty message
@@ -84,7 +107,7 @@ func NewMessage() *Message {
 	msg := new(irc.Message)
 	msg.Prefix = new(irc.Prefix)
 	msg.Params = make([]string, 0)
-	return &Message{msg}
+	return &Message{Message: msg, TimeStamp: time.Now()}
 }
 
 type devNull struct {
@@ -202,6 +225,50 @@ func (c *Connection) Join(ch []string) {
 	}
 }
 
+// ChMode is used to change users modes in a channel
+// operator = "+o" deop = "-o"
+// ban = "+b"
+func (c *Connection) ChMode(user, channel, mode string) {
+	if !c.IsConnected() {
+		return
+	}
+	c.Send <- []byte("MODE " + channel + " " + mode + " " + user)
+}
+
+// Topic sets the channel 'ch' topic (requires bot has proper permissions)
+func (c *Connection) Topic(ch, topic string) {
+	if !c.IsConnected() {
+		return
+	}
+	str := fmt.Sprintf("TOPIC %s :%s", ch, topic)
+	c.Send <- []byte(str)
+}
+
+// Action sends an action to 'dest' (user or channel)
+func (c *Connection) Action(dest, msg string) {
+	if !c.IsConnected() {
+		return
+	}
+	msg = fmt.Sprintf("\u0001ACTION %s\u0001", msg)
+	c.Msg(dest, msg)
+}
+
+// Notice sends a NOTICE message to 'dest' (user or channel)
+func (c *Connection) Notice(dest, msg string) {
+	msg = replacer.Replace(msg)
+	for len(msg) > 400 {
+		if !c.IsConnected() {
+			return
+		}
+		c.Send <- []byte("NOTICE " + dest + " :" + msg[:400])
+		msg = msg[400:]
+	}
+	if !c.IsConnected() {
+		return
+	}
+	c.Send <- []byte("NOTICE " + dest + " :" + msg)
+}
+
 //Pong sends pong
 func (c *Connection) Pong() {
 	if !c.IsConnected() {
@@ -228,6 +295,14 @@ func (c *Connection) Cmd(cmd string) {
 
 //Msg sends privmessage
 func (c *Connection) Msg(dest, msg string) {
+	msg = replacer.Replace(msg)
+	for len(msg) > 400 {
+		if !c.IsConnected() {
+			return
+		}
+		c.Send <- []byte(irc.PRIVMSG + " " + dest + " :" + msg[:400])
+		msg = msg[400:]
+	}
 	if !c.IsConnected() {
 		return
 	}
@@ -257,10 +332,10 @@ func (c *Connection) Reply(msg *Message, reply string) {
 	if !c.IsConnected() {
 		return
 	}
-	if msg.Params[0] == c.Nick {
+	if msg.To == c.Nick {
 		c.Msg(msg.Name, reply)
 	} else {
-		c.Msg(msg.Params[0], reply)
+		c.Msg(msg.To, reply)
 	}
 }
 
@@ -304,7 +379,7 @@ func changeNick(n string) string {
 //LogNotices logs notice messages
 func (c *Connection) LogNotices() {
 	c.AddCallback(NOTICE, func(m *Message) {
-		c.Log.Printf("NOTICE %s %s", m.Params[0], m.Trailing)
+		c.Log.Printf("NOTICE %s %s", m.To, m.Content)
 	})
 }
 
@@ -326,13 +401,13 @@ func (c *Connection) HandleNickTaken() {
 			c.Msg("NickServ", "GHOST "+c.Nick+" "+c.Password)
 			c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE &&
-					strings.Contains(m.Trailing, "has been ghosted")
+					strings.Contains(m.Content, "has been ghosted")
 			})
 			c.NewNick(c.Nick)
 			c.Msg("NickServ", "identify "+c.Nick+" "+c.Password)
 			c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE &&
-					strings.Contains(m.Trailing, "You are now identified")
+					strings.Contains(m.Content, "You are now identified")
 			})
 			return
 		}
@@ -378,7 +453,7 @@ func (c *Connection) HandleJoin(chans []string) {
 	c.AddCallback(WELCOME, func(msg *Message) {
 		if c.Password != "" {
 			c.WaitFor(func(m *Message) bool {
-				return m.Command == NOTICE && strings.Contains(m.Trailing, "You are now identified for")
+				return m.Command == NOTICE && strings.Contains(m.Content, "You are now identified for")
 			})
 		}
 		c.Log.Println("joining channels")
@@ -454,7 +529,7 @@ func (c *Connection) Start() {
 				return
 			}
 			c.Debug.Printf("← %s", raw)
-			msg := &Message{raw}
+			msg := ParseMessage(raw)
 			c.incomingMu.RLock()
 			for k := range c.incoming {
 				c.incoming[k] <- msg
@@ -475,7 +550,7 @@ func (c *Connection) Start() {
 				return
 			}
 			c.Debug.Printf("→ %s", v)
-			_, err := c.conn.Write(v)
+			_, err := fmt.Fprintf(c.conn, "%s%s", v, "\r\n")
 			if err != nil {
 				c.Disconnect()
 				c.Errchan <- err
