@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	irc "github.com/sorcix/irc"
+	irc "gopkg.in/sorcix/irc.v2"
 )
 
 var replacer *strings.Replacer
@@ -92,11 +92,15 @@ type Message struct {
 func ParseMessage(raw *irc.Message) (m *Message) {
 	m = new(Message)
 	m.Message = raw
-	m.Content = m.Trailing
+	m.Content = m.Trailing()
 	if len(m.Params) > 0 {
 		m.To = m.Params[0]
 	} else if m.Command == JOIN {
-		m.To = m.Trailing
+		if len(m.Params) > 1 {
+			m.To = m.Params[0]
+		} else {
+			m.To = m.Trailing()
+		}
 	}
 	m.TimeStamp = time.Now()
 	return m
@@ -118,7 +122,7 @@ func (d *devNull) Write(p []byte) (n int, err error) {
 }
 
 // WaitFor will block until a message matching the given filter is received
-func (c *Connection) WaitFor(filter func(*Message) bool) {
+func (c *Connection) WaitFor(filter func(*Message) bool, cmd func()) {
 	if !c.IsConnected() {
 		return
 	}
@@ -127,6 +131,7 @@ func (c *Connection) WaitFor(filter func(*Message) bool) {
 	tmpID := c.incomingID
 	c.incoming[tmpID] = make(chan *Message)
 	c.incomingMu.Unlock()
+	cmd()
 	defer func() {
 		c.incomingMu.Lock()
 	Loop:
@@ -400,18 +405,24 @@ func (c *Connection) HandleNickTaken() {
 			} else {
 				c.NewNick(c.Nick + tmp)
 			}
-			c.Log.Println("nick taken, GHOSTING " + c.Nick)
-			c.Msg("NickServ", "GHOST "+c.Nick+" "+c.Password)
 			c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE &&
 					strings.Contains(m.Content, "has been ghosted")
-			})
-			c.NewNick(c.Nick)
-			c.Msg("NickServ", "identify "+c.Nick+" "+c.Password)
+			},
+				func() {
+					c.Log.Println("nick taken, GHOSTING " + c.Nick)
+					c.Msg("NickServ", "GHOST "+c.Nick+" "+c.Password)
+				},
+			)
 			c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE &&
 					strings.Contains(m.Content, "You are now identified")
-			})
+			},
+				func() {
+					c.NewNick(c.Nick)
+					c.Msg("NickServ", "identify "+c.Nick+" "+c.Password)
+				},
+			)
 			return
 		}
 		c.Log.Printf("nick %s taken, changing nick", c.Nick)
@@ -457,7 +468,7 @@ func (c *Connection) HandleJoin(chans []string) {
 		if c.Password != "" {
 			c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE && strings.Contains(m.Content, "You are now identified for")
-			})
+			}, func() {})
 		}
 		c.Log.Println("joining channels")
 		c.Join(chans)

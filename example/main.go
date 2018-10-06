@@ -18,7 +18,7 @@ func main() {
 	irc.SetLogOutput(os.Stdout)
 	//irc.EnableDebug(os.Stdout)
 	irc.AddCallback(dumbirc.PRIVMSG, func(msg *dumbirc.Message) {
-		if msg.Trailing == "hello" {
+		if msg.Content == "hello" {
 			irc.Reply(msg, "Hi, How are you?")
 		}
 	})
