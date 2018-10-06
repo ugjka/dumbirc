@@ -131,14 +131,17 @@ func (c *Connection) WaitFor(filter func(*Message) bool) {
 		c.incomingMu.Lock()
 	Loop:
 		for {
+			if _, ok := c.incoming[tmpID]; !ok {
+				break
+			}
 			select {
 			case <-c.incoming[tmpID]:
 			default:
 				close(c.incoming[tmpID])
+				delete(c.incoming, tmpID)
 				break Loop
 			}
 		}
-		delete(c.incoming, tmpID)
 		c.incomingMu.Unlock()
 	}()
 	for mes := range c.incoming[tmpID] {
