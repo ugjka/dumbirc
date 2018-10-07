@@ -96,11 +96,7 @@ func ParseMessage(raw *irc.Message) (m *Message) {
 	if len(m.Params) > 0 {
 		m.To = m.Params[0]
 	} else if m.Command == JOIN {
-		if len(m.Params) > 1 {
-			m.To = m.Params[0]
-		} else {
-			m.To = m.Trailing()
-		}
+		m.To = m.Trailing()
 	}
 	m.TimeStamp = time.Now()
 	return m
