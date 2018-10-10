@@ -57,11 +57,12 @@ type Connection struct {
 	incomingMu    sync.RWMutex
 	sync.RWMutex
 	sync.WaitGroup
+	prefixLen int
 }
 
 //New creates a new irc object
 func New(nick, user, server string, tls bool) *Connection {
-	return &Connection{
+	conn := &Connection{
 		Nick:       nick,
 		User:       user,
 		Server:     server,
@@ -78,6 +79,8 @@ func New(nick, user, server string, tls bool) *Connection {
 		incomingMu: sync.RWMutex{},
 		WaitGroup:  sync.WaitGroup{},
 	}
+	conn.getPrefixLen()
+	return conn
 }
 
 //Message event
@@ -260,12 +263,12 @@ func (c *Connection) Action(dest, msg string) {
 // Notice sends a NOTICE message to 'dest' (user or channel)
 func (c *Connection) Notice(dest, msg string) {
 	msg = replacer.Replace(msg)
-	for len(msg) > 400 {
+	for c.prefixLen+len("NOTICE "+dest+" :")+len(msg) > 510 {
 		if !c.IsConnected() {
 			return
 		}
-		c.Send <- "NOTICE " + dest + " :" + msg[:400]
-		msg = msg[400:]
+		c.Send <- "NOTICE " + dest + " :" + msg[:510-len("NOTICE "+dest+" :")-c.prefixLen]
+		msg = msg[510-len("NOTICE "+dest+" :")-c.prefixLen:]
 	}
 	if !c.IsConnected() {
 		return
@@ -300,12 +303,12 @@ func (c *Connection) Cmd(cmd string) {
 //Msg sends privmessage
 func (c *Connection) Msg(dest, msg string) {
 	msg = replacer.Replace(msg)
-	for len(msg) > 400 {
+	for c.prefixLen+len(irc.PRIVMSG+" "+dest+" :")+len(msg) > 510 {
 		if !c.IsConnected() {
 			return
 		}
-		c.Send <- irc.PRIVMSG + " " + dest + " :" + msg[:400]
-		msg = msg[400:]
+		c.Send <- irc.PRIVMSG + " " + dest + " :" + msg[:510-len(irc.PRIVMSG+" "+dest+" :")-c.prefixLen]
+		msg = msg[510-len(irc.PRIVMSG+" "+dest+" :")-c.prefixLen:]
 	}
 	if !c.IsConnected() {
 		return
@@ -468,6 +471,19 @@ func (c *Connection) HandleJoin(chans []string) {
 		}
 		c.Log.Println("joining channels")
 		c.Join(chans)
+	})
+}
+
+func (c *Connection) getPrefixLen() {
+	c.AddTrigger(Trigger{
+		Condition: func(m *Message) bool {
+			return m.Command == JOIN && m.Name == c.Nick
+		},
+		Response: func(m *Message) {
+			c.Lock()
+			c.prefixLen = m.Prefix.Len() + 2
+			c.Unlock()
+		},
 	})
 }
 
