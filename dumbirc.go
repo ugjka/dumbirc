@@ -55,9 +55,9 @@ type Connection struct {
 	incomingID    int
 	incoming      map[int]chan *Message
 	incomingMu    sync.RWMutex
+	prefix        *irc.Prefix
 	sync.RWMutex
 	sync.WaitGroup
-	prefixLen int
 }
 
 //New creates a new irc object
@@ -78,8 +78,10 @@ func New(nick, user, server string, tls bool) *Connection {
 		incoming:   make(map[int]chan *Message),
 		incomingMu: sync.RWMutex{},
 		WaitGroup:  sync.WaitGroup{},
+		prefix:     new(irc.Prefix),
 	}
 	conn.getPrefixLen()
+	conn.prefix.Name = nick
 	return conn
 }
 
@@ -263,12 +265,15 @@ func (c *Connection) Action(dest, msg string) {
 // Notice sends a NOTICE message to 'dest' (user or channel)
 func (c *Connection) Notice(dest, msg string) {
 	msg = replacer.Replace(msg)
-	for c.prefixLen+len("NOTICE "+dest+" :")+len(msg) > 510 {
+	c.RLock()
+	prefLen := 2 + c.prefix.Len() + len("NOTICE "+dest+" :")
+	c.RUnlock()
+	for prefLen+len(msg) > 510 {
 		if !c.IsConnected() {
 			return
 		}
-		c.Send <- "NOTICE " + dest + " :" + msg[:510-len("NOTICE "+dest+" :")-c.prefixLen]
-		msg = msg[510-len("NOTICE "+dest+" :")-c.prefixLen:]
+		c.Send <- "NOTICE " + dest + " :" + msg[:510-prefLen]
+		msg = msg[510-prefLen:]
 	}
 	if !c.IsConnected() {
 		return
@@ -303,12 +308,15 @@ func (c *Connection) Cmd(cmd string) {
 //Msg sends privmessage
 func (c *Connection) Msg(dest, msg string) {
 	msg = replacer.Replace(msg)
-	for c.prefixLen+len(irc.PRIVMSG+" "+dest+" :")+len(msg) > 510 {
+	c.RLock()
+	prefLen := 2 + c.prefix.Len() + len(irc.PRIVMSG+" "+dest+" :")
+	c.RUnlock()
+	for prefLen+len(msg) > 510 {
 		if !c.IsConnected() {
 			return
 		}
-		c.Send <- irc.PRIVMSG + " " + dest + " :" + msg[:510-len(irc.PRIVMSG+" "+dest+" :")-c.prefixLen]
-		msg = msg[510-len(irc.PRIVMSG+" "+dest+" :")-c.prefixLen:]
+		c.Send <- irc.PRIVMSG + " " + dest + " :" + msg[:510-prefLen]
+		msg = msg[510-prefLen:]
 	}
 	if !c.IsConnected() {
 		return
@@ -332,6 +340,9 @@ func (c *Connection) NewNick(n string) {
 		return
 	}
 	c.Send <- irc.NICK + " " + n
+	c.Lock()
+	c.prefix.Name = n
+	c.Unlock()
 }
 
 //Reply replies to a message
@@ -481,7 +492,9 @@ func (c *Connection) getPrefixLen() {
 		},
 		Response: func(m *Message) {
 			c.Lock()
-			c.prefixLen = m.Prefix.Len() + 2
+			c.prefix.Name = m.Name
+			c.prefix.User = m.User
+			c.prefix.Host = m.Host
 			c.Unlock()
 		},
 	})
