@@ -224,13 +224,17 @@ func (c *Connection) RunCallbacks(msg *Message) {
 	}
 }
 
+func (c *Connection) send(msg string) {
+	if !c.IsConnected() {
+		return
+	}
+	c.Send <- msg
+}
+
 //Join channels
 func (c *Connection) Join(ch []string) {
 	for _, v := range ch {
-		if !c.IsConnected() {
-			return
-		}
-		c.Send <- irc.JOIN + " " + v
+		c.send(irc.JOIN + " " + v)
 	}
 }
 
@@ -238,26 +242,17 @@ func (c *Connection) Join(ch []string) {
 // operator = "+o" deop = "-o"
 // ban = "+b"
 func (c *Connection) ChMode(user, channel, mode string) {
-	if !c.IsConnected() {
-		return
-	}
-	c.Send <- "MODE " + channel + " " + mode + " " + user
+	c.send("MODE " + channel + " " + mode + " " + user)
 }
 
 // Topic sets the channel 'ch' topic (requires bot has proper permissions)
 func (c *Connection) Topic(ch, topic string) {
-	if !c.IsConnected() {
-		return
-	}
 	str := fmt.Sprintf("TOPIC %s :%s", ch, topic)
-	c.Send <- str
+	c.send(str)
 }
 
 // Action sends an action to 'dest' (user or channel)
 func (c *Connection) Action(dest, msg string) {
-	if !c.IsConnected() {
-		return
-	}
 	msg = fmt.Sprintf("\u0001ACTION %s\u0001", msg)
 	c.Msg(dest, msg)
 }
@@ -269,40 +264,25 @@ func (c *Connection) Notice(dest, msg string) {
 	prefLen := 2 + c.prefix.Len() + len("NOTICE "+dest+" :")
 	c.RUnlock()
 	for prefLen+len(msg) > 510 {
-		if !c.IsConnected() {
-			return
-		}
-		c.Send <- "NOTICE " + dest + " :" + msg[:510-prefLen]
+		c.send("NOTICE " + dest + " :" + msg[:510-prefLen])
 		msg = msg[510-prefLen:]
 	}
-	if !c.IsConnected() {
-		return
-	}
-	c.Send <- "NOTICE " + dest + " :" + msg
+	c.send("NOTICE " + dest + " :" + msg)
 }
 
 //Pong sends pong
 func (c *Connection) Pong() {
-	if !c.IsConnected() {
-		return
-	}
-	c.Send <- irc.PONG
+	c.send(irc.PONG)
 }
 
 //Ping sends ping
 func (c *Connection) Ping() {
-	if !c.IsConnected() {
-		return
-	}
-	c.Send <- irc.PING + " " + c.Server
+	c.send(irc.PING + " " + c.Server)
 }
 
 //Cmd sends command
 func (c *Connection) Cmd(cmd string) {
-	if !c.IsConnected() {
-		return
-	}
-	c.Send <- cmd
+	c.send(cmd)
 }
 
 //Msg sends privmessage
@@ -312,34 +292,22 @@ func (c *Connection) Msg(dest, msg string) {
 	prefLen := 2 + c.prefix.Len() + len(irc.PRIVMSG+" "+dest+" :")
 	c.RUnlock()
 	for prefLen+len(msg) > 510 {
-		if !c.IsConnected() {
-			return
-		}
-		c.Send <- irc.PRIVMSG + " " + dest + " :" + msg[:510-prefLen]
+		c.send(irc.PRIVMSG + " " + dest + " :" + msg[:510-prefLen])
 		msg = msg[510-prefLen:]
 	}
-	if !c.IsConnected() {
-		return
-	}
-	c.Send <- irc.PRIVMSG + " " + dest + " :" + msg
+	c.send(irc.PRIVMSG + " " + dest + " :" + msg)
 }
 
 //MsgBulk sends message to many
 func (c *Connection) MsgBulk(list []string, msg string) {
 	for _, k := range list {
-		if !c.IsConnected() {
-			return
-		}
 		c.Msg(k, msg)
 	}
 }
 
 //NewNick Changes nick
 func (c *Connection) NewNick(n string) {
-	if !c.IsConnected() {
-		return
-	}
-	c.Send <- irc.NICK + " " + n
+	c.send(irc.NICK + " " + n)
 	c.Lock()
 	c.prefix.Name = n
 	c.Unlock()
@@ -347,9 +315,6 @@ func (c *Connection) NewNick(n string) {
 
 //Reply replies to a message
 func (c *Connection) Reply(msg *Message, reply string) {
-	if !c.IsConnected() {
-		return
-	}
 	if msg.To == c.Nick {
 		c.Msg(msg.Name, reply)
 	} else {
