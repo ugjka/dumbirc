@@ -123,9 +123,9 @@ func (d *devNull) Write(p []byte) (n int, err error) {
 }
 
 // WaitFor will block until a message matching the given filter is received
-func (c *Connection) WaitFor(filter func(*Message) bool, cmd func()) {
+func (c *Connection) WaitFor(filter func(*Message) bool, cmd func(), timeout time.Duration, timeoutErr error) (err error) {
 	if !c.IsConnected() {
-		return
+		return fmt.Errorf("WaitFor: exiting, not connected")
 	}
 	c.incomingMu.Lock()
 	c.incomingID++
@@ -150,12 +150,25 @@ func (c *Connection) WaitFor(filter func(*Message) bool, cmd func()) {
 		}
 		c.incomingMu.Unlock()
 	}()
-	for mes := range c.incoming[tmpID] {
-		if filter(mes) {
-			return
+	timer := time.NewTimer(timeout)
+	for {
+		select {
+		case mes, ok := <-c.incoming[tmpID]:
+			if !ok {
+				timer.Stop()
+				return fmt.Errorf("WaitFor: exiting, not connected")
+			}
+			if filter(mes) {
+				timer.Stop()
+				return nil
+			}
+		case <-timer.C:
+			if !c.IsConnected() {
+				return fmt.Errorf("WaitFor: exiting, not connected")
+			}
+			return timeoutErr
 		}
 	}
-	return
 }
 
 //SetThrottle sets post delay
@@ -380,7 +393,8 @@ func (c *Connection) HandleNickTaken() {
 			} else {
 				c.NewNick(c.Nick + tmp)
 			}
-			c.WaitFor(func(m *Message) bool {
+			ghostErr := fmt.Errorf("ghosting of %s timed out", c.Nick)
+			err := c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE &&
 					strings.Contains(m.Content, "has been ghosted")
 			},
@@ -388,8 +402,17 @@ func (c *Connection) HandleNickTaken() {
 					c.Log.Println("nick taken, GHOSTING " + c.Nick)
 					c.Msg("NickServ", "GHOST "+c.Nick+" "+c.Password)
 				},
+				time.Minute,
+				ghostErr,
 			)
-			c.WaitFor(func(m *Message) bool {
+			if err == ghostErr {
+				c.Log.Println(err)
+				return
+			} else if err != nil {
+				return
+			}
+			identifyErr := fmt.Errorf("nickServ identify for %s timed out", c.Nick)
+			err = c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE &&
 					strings.Contains(m.Content, "You are now identified")
 			},
@@ -397,7 +420,12 @@ func (c *Connection) HandleNickTaken() {
 					c.NewNick(c.Nick)
 					c.Msg("NickServ", "identify "+c.Nick+" "+c.Password)
 				},
+				time.Minute,
+				identifyErr,
 			)
+			if err == identifyErr {
+				c.Log.Println(err)
+			}
 			return
 		}
 		c.Log.Printf("nick %s taken, changing nick", c.Nick)
@@ -441,9 +469,18 @@ func (c *Connection) HandlePingPong() {
 func (c *Connection) HandleJoin(chans []string) {
 	c.AddCallback(WELCOME, func(msg *Message) {
 		if c.Password != "" {
-			c.WaitFor(func(m *Message) bool {
+			idConfirmErr := fmt.Errorf("identification confirmation for %s timed out", c.Nick)
+			err := c.WaitFor(func(m *Message) bool {
 				return m.Command == NOTICE && strings.Contains(m.Content, "You are now identified for")
-			}, func() {})
+			},
+				func() {},
+				time.Minute,
+				idConfirmErr,
+			)
+			if err == idConfirmErr {
+				c.Log.Println(err)
+				c.Log.Println("trying to join the channels anyway")
+			}
 		}
 		c.Log.Println("joining channels")
 		c.Join(chans)
