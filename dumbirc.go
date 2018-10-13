@@ -480,6 +480,8 @@ func (c *Connection) HandleJoin(chans []string) {
 			if err == idConfirmErr {
 				c.Log.Println(err)
 				c.Log.Println("trying to join the channels anyway")
+			} else if err != nil {
+				return
 			}
 		}
 		c.Log.Println("joining channels")
