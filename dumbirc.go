@@ -80,7 +80,7 @@ func New(nick, user, server string, tls bool) *Connection {
 		WaitGroup:  sync.WaitGroup{},
 		prefix:     new(irc.Prefix),
 	}
-	conn.getPrefixLen()
+	conn.getPrefix()
 	conn.prefix.Name = nick
 	return conn
 }
@@ -183,13 +183,13 @@ func (c *Connection) SetPassword(pass string) {
 	c.Password = pass
 }
 
-//SetLogOutput sets where to log
+//SetLogOutput sets logger writer
 func (c *Connection) SetLogOutput(w io.Writer) {
 	c.Log.SetOutput(w)
 }
 
-//EnableDebug enables irc message debugging
-func (c *Connection) EnableDebug(w io.Writer) {
+//SetDebugOutput sets debug logger writer
+func (c *Connection) SetDebugOutput(w io.Writer) {
 	c.Debug.SetOutput(w)
 }
 
@@ -217,24 +217,24 @@ func (c *Connection) AddTrigger(t Trigger) {
 }
 
 //RunTriggers ...
-func (c *Connection) RunTriggers(msg *Message) {
+func (c *Connection) RunTriggers(m *Message) {
 	for _, v := range c.triggers {
-		if v.Condition(msg) {
-			v.Response(msg)
+		if v.Condition(m) {
+			v.Response(m)
 		}
 	}
 }
 
 //RunCallbacks ...
-func (c *Connection) RunCallbacks(msg *Message) {
+func (c *Connection) RunCallbacks(m *Message) {
 	if v, ok := c.callbacks[ANYMESSAGE]; ok {
 		for _, v := range v {
-			v(msg)
+			v(m)
 		}
 	}
-	if v, ok := c.callbacks[msg.Command]; ok {
+	if v, ok := c.callbacks[m.Command]; ok {
 		for _, v := range v {
-			v(msg)
+			v(m)
 		}
 	}
 }
@@ -247,8 +247,8 @@ func (c *Connection) send(msg string) {
 }
 
 //Join channels
-func (c *Connection) Join(ch []string) {
-	for _, v := range ch {
+func (c *Connection) Join(channels []string) {
+	for _, v := range channels {
 		c.send(irc.JOIN + " " + v)
 	}
 }
@@ -260,10 +260,10 @@ func (c *Connection) ChMode(user, channel, mode string) {
 	c.send("MODE " + channel + " " + mode + " " + user)
 }
 
-// Topic sets the channel 'ch' topic (requires bot has proper permissions)
-func (c *Connection) Topic(ch, topic string) {
-	str := fmt.Sprintf("TOPIC %s :%s", ch, topic)
-	c.send(str)
+// Topic sets the channel 'channel' topic (requires bot has proper permissions)
+func (c *Connection) Topic(channel, topic string) {
+	msg := fmt.Sprintf("TOPIC %s :%s", channel, topic)
+	c.send(msg)
 }
 
 // Action sends an action to 'dest' (user or channel)
@@ -296,8 +296,8 @@ func (c *Connection) Ping() {
 }
 
 //Cmd sends command
-func (c *Connection) Cmd(cmd string) {
-	c.send(cmd)
+func (c *Connection) Cmd(command string) {
+	c.send(command)
 }
 
 //Msg sends privmessage
@@ -314,26 +314,26 @@ func (c *Connection) Msg(dest, msg string) {
 }
 
 //MsgBulk sends message to many
-func (c *Connection) MsgBulk(list []string, msg string) {
-	for _, k := range list {
+func (c *Connection) MsgBulk(dest []string, msg string) {
+	for _, k := range dest {
 		c.Msg(k, msg)
 	}
 }
 
 //NewNick Changes nick
-func (c *Connection) NewNick(n string) {
-	c.send(irc.NICK + " " + n)
+func (c *Connection) NewNick(nick string) {
+	c.send(irc.NICK + " " + nick)
 	c.Lock()
-	c.prefix.Name = n
+	c.prefix.Name = nick
 	c.Unlock()
 }
 
 //Reply replies to a message
-func (c *Connection) Reply(msg *Message, reply string) {
-	if msg.To == c.Nick {
-		c.Msg(msg.Name, reply)
+func (c *Connection) Reply(m *Message, reply string) {
+	if m.To == c.Nick {
+		c.Msg(m.Name, reply)
 	} else {
-		c.Msg(msg.To, reply)
+		c.Msg(m.To, reply)
 	}
 }
 
@@ -362,16 +362,16 @@ func (c *Connection) Disconnect() {
 	}
 }
 
-func changeNick(n string) string {
-	if len(n) < 16 {
-		n += "_"
-		return n
+func changeNick(nick string) string {
+	if len(nick) < 16 {
+		nick += "_"
+		return nick
 	}
-	n = strings.TrimRight(n, "_")
-	if len(n) > 12 {
-		n = n[:12] + "_"
+	nick = strings.TrimRight(nick, "_")
+	if len(nick) > 12 {
+		nick = nick[:12] + "_"
 	}
-	return n
+	return nick
 }
 
 //LogNotices logs notice messages
@@ -491,7 +491,7 @@ func (c *Connection) HandleJoin(chans []string) {
 	})
 }
 
-func (c *Connection) getPrefixLen() {
+func (c *Connection) getPrefix() {
 	c.AddTrigger(Trigger{
 		Condition: func(m *Message) bool {
 			return m.Command == JOIN && m.Name == c.Nick
