@@ -124,8 +124,9 @@ func (d *devNull) Write(p []byte) (n int, err error) {
 
 // WaitFor will block until a message matching the given filter is received
 func (c *Connection) WaitFor(filter func(*Message) bool, cmd func(), timeout time.Duration, timeoutErr error) (err error) {
+	notConnErr := fmt.Errorf("WaitFor: exiting, not connected")
 	if !c.IsConnected() {
-		return fmt.Errorf("WaitFor: exiting, not connected")
+		return notConnErr
 	}
 	c.incomingMu.Lock()
 	c.incomingID++
@@ -156,7 +157,7 @@ func (c *Connection) WaitFor(filter func(*Message) bool, cmd func(), timeout tim
 		case mes, ok := <-c.incoming[tmpID]:
 			if !ok {
 				timer.Stop()
-				return fmt.Errorf("WaitFor: exiting, not connected")
+				return notConnErr
 			}
 			if filter(mes) {
 				timer.Stop()
@@ -164,7 +165,7 @@ func (c *Connection) WaitFor(filter func(*Message) bool, cmd func(), timeout tim
 			}
 		case <-timer.C:
 			if !c.IsConnected() {
-				return fmt.Errorf("WaitFor: exiting, not connected")
+				return notConnErr
 			}
 			return timeoutErr
 		}
