@@ -404,7 +404,7 @@ func (c *Connection) HandleNickTaken() {
 					c.Log.Println("nick taken, GHOSTING " + c.Nick)
 					c.Msg("NickServ", "GHOST "+c.Nick+" "+c.Password)
 				},
-				time.Minute,
+				time.Second*30,
 				ghostErr,
 			)
 			if err == ghostErr {
@@ -422,7 +422,7 @@ func (c *Connection) HandleNickTaken() {
 					c.NewNick(c.Nick)
 					c.Msg("NickServ", "identify "+c.Nick+" "+c.Password)
 				},
-				time.Minute,
+				time.Second*30,
 				identifyErr,
 			)
 			if err == identifyErr {
@@ -476,7 +476,7 @@ func (c *Connection) HandleJoin(chans []string) {
 				return m.Command == NOTICE && strings.Contains(m.Content, "You are now identified for")
 			},
 				func() {},
-				time.Minute,
+				time.Second*30,
 				idConfirmErr,
 			)
 			if err == idConfirmErr {
