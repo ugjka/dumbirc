@@ -132,19 +132,20 @@ func (c *Connection) WaitFor(filter func(*Message) bool, cmd func(), timeout tim
 	c.incomingID++
 	tmpID := c.incomingID
 	c.incoming[tmpID] = make(chan *Message)
+	recieve := c.incoming[tmpID]
 	c.incomingMu.Unlock()
 	cmd()
 	defer func() {
 		c.incomingMu.Lock()
 	Loop:
 		for {
-			if _, ok := c.incoming[tmpID]; !ok {
-				break
-			}
 			select {
-			case <-c.incoming[tmpID]:
+			case _, ok := <-recieve:
+				if !ok {
+					break Loop
+				}
 			default:
-				close(c.incoming[tmpID])
+				close(recieve)
 				delete(c.incoming, tmpID)
 				break Loop
 			}
@@ -154,7 +155,7 @@ func (c *Connection) WaitFor(filter func(*Message) bool, cmd func(), timeout tim
 	timer := time.NewTimer(timeout)
 	for {
 		select {
-		case mes, ok := <-c.incoming[tmpID]:
+		case mes, ok := <-recieve:
 			if !ok {
 				timer.Stop()
 				return notConnErr
