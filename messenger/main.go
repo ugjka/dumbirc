@@ -27,11 +27,12 @@ func New() *Messenger {
 }
 
 func (m *Messenger) monitor() {
+	tmp := make(chan interface{})
 	for {
-		tmp := make(chan interface{})
 		select {
 		case m.get <- tmp:
 			m.pool[tmp] = struct{}{}
+			tmp = make(chan interface{})
 		case del := <-m.del:
 			if _, ok := m.pool[del]; ok {
 				close(del)
