@@ -26,6 +26,7 @@ func New() *Messenger {
 	return m
 }
 
+// Main loop where all the action happens
 func (m *Messenger) monitor() {
 	tmp := make(chan interface{})
 	for {
@@ -58,38 +59,40 @@ func (m *Messenger) monitor() {
 	}
 }
 
-// Reset removes all clients
+// Reset removes and closes all clients.
 func (m *Messenger) Reset() {
 	m.reset <- struct{}{}
 }
 
-// Kill removes all clients and stops the reading and writing goroutine
+// Kill removes and closes all clients and stops the reading and writing goroutine.
 func (m *Messenger) Kill() {
 	m.kill <- struct{}{}
 }
 
-// Sub subscribes a new client for reading broadcasts
+// Sub subscribes a new client for reading broadcasts.
+// Clients should be always listening or broadcasting will block.
+// Clients should check whether the channel is closed or not.
 func (m *Messenger) Sub() (client chan interface{}, err error) {
-	sub := <-m.get
-	if sub == nil {
-		return nil, fmt.Errorf("can't sub, messenger stopped")
+	sub, ok := <-m.get
+	if !ok {
+		return nil, fmt.Errorf("can't sub, messenger killed")
 	}
 	return sub, nil
 }
 
-// Unsub unsubscribes a client
+// Unsub unsubscribes a client.
 func (m *Messenger) Unsub(client chan interface{}) {
-	del := client
 	for {
 		select {
 		case <-client:
-		case m.del <- del:
+		case m.del <- client:
 			return
 		}
 	}
 }
 
-// Broadcast broadcasts a message to all current clients
+// Broadcast broadcasts a message to all current clients.
+// If a client is not listening this will block.
 func (m *Messenger) Broadcast(msg interface{}) {
 	m.broadcast <- msg
 }
