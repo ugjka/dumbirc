@@ -625,7 +625,7 @@ func writeLoop(c *Connection) {
 		}
 		c.Debug.Printf("→ %s", v)
 		timeout := time.AfterFunc(c.ConnTimeout, func() { c.conn.Close() })
-		_, err := fmt.Fprintf(c.conn, "%s%s", v, "\r\n")
+		_, err := fmt.Fprintf(c.conn, "%s", v)
 		if err != nil {
 			timeout.Stop()
 			c.Disconnect()
