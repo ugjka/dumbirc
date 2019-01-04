@@ -36,16 +36,14 @@ const (
 
 //Connection Settings
 type Connection struct {
-	Nick         string
-	User         string
-	RealN        string
-	Server       string
-	TLS          bool
-	Password     string
-	Throttle     time.Duration
-	ConnTimeout  time.Duration
-	connectedSet chan bool
-	connectedGet chan bool
+	Nick        string
+	User        string
+	RealN       string
+	Server      string
+	TLS         bool
+	Password    string
+	Throttle    time.Duration
+	ConnTimeout time.Duration
 	//Fake Connected status
 	DebugFakeConn bool
 	conn          *irc.Conn
@@ -62,6 +60,8 @@ type Connection struct {
 	destroy       chan struct{}
 	pingTick      time.Duration
 	joinTimeout   time.Duration
+	connected     bool
+	connectedMu   sync.Mutex
 	sync.WaitGroup
 }
 
@@ -82,17 +82,16 @@ func New(nick, user, server string, tls bool) *Connection {
 		Errchan:      make(chan error, 1),
 		WaitGroup:    sync.WaitGroup{},
 		prefix:       new(irc.Prefix),
-		connectedGet: make(chan bool),
-		connectedSet: make(chan bool),
 		prefixlenGet: make(chan int),
 		prefixlenSet: make(chan []string),
 		destroy:      make(chan struct{}),
 		pingTick:     time.Minute,
 		joinTimeout:  time.Second * 30,
+		connected:    false,
+		connectedMu:  sync.Mutex{},
 	}
 	conn.getPrefix()
 	conn.prefix.Name = nick
-	go connStatusMon(conn)
 	go prefixMonitor(conn)
 	return conn
 }
@@ -100,18 +99,6 @@ func New(nick, user, server string, tls bool) *Connection {
 // Destroy terminates monitor goroutines created by New()
 func Destroy(c *Connection) {
 	close(c.destroy)
-}
-
-func connStatusMon(c *Connection) {
-	connected := false
-	for {
-		select {
-		case connected = <-c.connectedSet:
-		case c.connectedGet <- connected:
-		case <-c.destroy:
-			return
-		}
-	}
 }
 
 func prefixMonitor(c *Connection) {
@@ -228,7 +215,9 @@ func (c *Connection) SetDebugOutput(w io.Writer) {
 
 //IsConnected returns connection status
 func (c *Connection) IsConnected() bool {
-	return <-c.connectedGet
+	c.connectedMu.Lock()
+	defer c.connectedMu.Unlock()
+	return c.connected
 }
 
 //AddCallback Adds callback to an event
@@ -364,10 +353,12 @@ func (c *Connection) Reply(m *Message, reply string) {
 
 //Disconnect disconnects from irc
 func (c *Connection) Disconnect() {
-	if !c.IsConnected() {
+	c.connectedMu.Lock()
+	defer c.connectedMu.Unlock()
+	if !c.connected {
 		return
 	}
-	c.connectedSet <- false
+	c.connected = false
 	c.conn.Close()
 	c.messenger.Kill()
 	for {
@@ -538,7 +529,9 @@ func (c *Connection) Start() {
 		return
 	}
 	c.Send = make(chan string)
-	c.connectedSet <- true
+	c.connectedMu.Lock()
+	c.connected = true
+	c.connectedMu.Unlock()
 	c.messenger = messenger.New(5, false)
 	err = identify(c)
 	if err != nil {

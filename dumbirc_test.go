@@ -137,7 +137,6 @@ func TestHandlePingPong(t *testing.T) {
 	bot.Disconnect()
 	Destroy(bot)
 	srv.stop()
-
 }
 
 func TestHandlePing(t *testing.T) {
