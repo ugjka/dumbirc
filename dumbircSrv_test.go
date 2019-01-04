@@ -3,7 +3,6 @@ package dumbirc
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -11,7 +10,7 @@ import (
 	irc "gopkg.in/sorcix/irc.v2"
 )
 
-const SERVER = ":54321"
+const SERVER = "127.0.0.1:54321"
 
 type ircServer struct {
 	in       chan []byte
@@ -80,7 +79,6 @@ func (i *ircServer) monitor() {
 		defer i.wg.Done()
 		sc := bufio.NewScanner(c)
 		for sc.Scan() {
-			fmt.Println(sc.Text())
 			i.out <- []byte(sc.Text() + "\n")
 		}
 	}(i, conn)
