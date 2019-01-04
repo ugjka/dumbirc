@@ -60,7 +60,6 @@ type Connection struct {
 	prefixlenGet  chan int
 	prefixlenSet  chan []string
 	destroy       chan struct{}
-	destroywg     sync.WaitGroup
 	pingTick      time.Duration
 	joinTimeout   time.Duration
 	sync.WaitGroup
@@ -88,13 +87,11 @@ func New(nick, user, server string, tls bool) *Connection {
 		prefixlenGet: make(chan int),
 		prefixlenSet: make(chan []string),
 		destroy:      make(chan struct{}),
-		destroywg:    sync.WaitGroup{},
 		pingTick:     time.Minute,
 		joinTimeout:  time.Second * 30,
 	}
 	conn.getPrefix()
 	conn.prefix.Name = nick
-	conn.destroywg.Add(2)
 	go connStatusMon(conn)
 	go prefixMonitor(conn)
 	return conn
@@ -103,11 +100,9 @@ func New(nick, user, server string, tls bool) *Connection {
 // Destroy terminates monitor goroutines created by New()
 func Destroy(c *Connection) {
 	close(c.destroy)
-	c.destroywg.Wait()
 }
 
 func connStatusMon(c *Connection) {
-	defer c.destroywg.Done()
 	connected := false
 	for {
 		select {
@@ -120,7 +115,6 @@ func connStatusMon(c *Connection) {
 }
 
 func prefixMonitor(c *Connection) {
-	defer c.destroywg.Done()
 	for {
 		select {
 		case args := <-c.prefixlenSet:
@@ -479,9 +473,7 @@ func (c *Connection) HandlePingPong() {
 		pingpong(pp)
 	})
 	pingTick := time.NewTicker(c.pingTick)
-	c.destroywg.Add(1)
-	go func(tick *time.Ticker) {
-		defer c.destroywg.Done()
+	go func(tick *time.Ticker, c *Connection) {
 		for range tick.C {
 			select {
 			case <-pp:
@@ -493,7 +485,7 @@ func (c *Connection) HandlePingPong() {
 				c.Log.Println("got no pong")
 			}
 		}
-	}(pingTick)
+	}(pingTick, c)
 }
 
 //HandleJoin joins channels on welcome
