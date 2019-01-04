@@ -261,8 +261,9 @@ func (c *Connection) RunCallbacks(m *Message) {
 }
 
 func (c *Connection) send(msg string) {
-	c.connectedMu.Lock()
-	defer c.connectedMu.Unlock()
+	if !c.IsConnected() {
+		return
+	}
 	select {
 	case c.Send <- msg:
 	case <-c.disconnect:
