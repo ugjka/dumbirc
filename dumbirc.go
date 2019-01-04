@@ -80,7 +80,7 @@ func New(nick, user, server string, tls bool) *Connection {
 		triggers:     make([]Trigger, 0),
 		Log:          log.New(&devNull{}, "", log.Ldate|log.Ltime),
 		Debug:        log.New(&devNull{}, "debug", log.Ltime),
-		Errchan:      make(chan error),
+		Errchan:      make(chan error, 1),
 		WaitGroup:    sync.WaitGroup{},
 		prefix:       new(irc.Prefix),
 		connectedGet: make(chan bool),
@@ -611,7 +611,10 @@ func readLoop(c *Connection) {
 		if err != nil {
 			timeout.Stop()
 			c.Disconnect()
-			c.Errchan <- err
+			select {
+			case c.Errchan <- err:
+			default:
+			}
 			return
 		}
 		timeout.Stop()
@@ -639,7 +642,10 @@ func writeLoop(c *Connection) {
 		if err != nil {
 			timeout.Stop()
 			c.Disconnect()
-			c.Errchan <- err
+			select {
+			case c.Errchan <- err:
+			default:
+			}
 			return
 		}
 		timeout.Stop()
