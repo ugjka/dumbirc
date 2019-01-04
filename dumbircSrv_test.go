@@ -1,11 +1,7 @@
 package dumbirc
 
 import (
-	"bufio"
-	"bytes"
-	"io"
 	"net"
-	"sync"
 
 	irc "gopkg.in/sorcix/irc.v2"
 )
@@ -13,34 +9,26 @@ import (
 const SERVER = "127.0.0.1:54321"
 
 type ircServer struct {
-	in       chan []byte
-	out      chan []byte
-	outBuff  *bytes.Buffer
-	dec      *irc.Decoder
-	enc      *irc.Encoder
-	listener net.Listener
-	kill     chan struct{}
-	wg       *sync.WaitGroup
+	dec       *irc.Decoder
+	enc       *irc.Encoder
+	listener  net.Listener
+	conn      net.Conn
+	connReady chan struct{}
 }
 
 func (i *ircServer) Write(b []byte) (n int, err error) {
-	i.in <- b
-	return len(b), nil
+	<-i.connReady
+	return i.conn.Write(b)
 }
 
 func (i *ircServer) Read(b []byte) (n int, err error) {
-	tmp := <-i.out
-	copy(b, tmp)
-	return len(tmp), nil
+	<-i.connReady
+	return i.conn.Read(b)
 }
 
 func newServer() *ircServer {
 	s := &ircServer{
-		in:      make(chan []byte, 100),
-		out:     make(chan []byte, 100),
-		outBuff: bytes.NewBuffer(nil),
-		kill:    make(chan struct{}, 0),
-		wg:      &sync.WaitGroup{},
+		connReady: make(chan struct{}),
 	}
 	s.dec = irc.NewDecoder(s)
 	s.enc = irc.NewEncoder(s)
@@ -62,35 +50,13 @@ func (i *ircServer) monitor() {
 	if err != nil {
 		panic(err)
 	}
-	i.wg.Add(1)
-	go func(i *ircServer, c net.Conn) {
-		defer i.wg.Done()
-		for {
-			select {
-			case <-i.kill:
-				return
-			case tmp := <-i.in:
-				io.WriteString(c, string(tmp))
-			}
-		}
-	}(i, conn)
-	i.wg.Add(1)
-	go func(i *ircServer, c net.Conn) {
-		defer i.wg.Done()
-		sc := bufio.NewScanner(c)
-		for sc.Scan() {
-			i.out <- []byte(sc.Text() + "\n")
-		}
-	}(i, conn)
+	i.conn = conn
+	close(i.connReady)
 }
 
 func (i *ircServer) stop() {
 	i.listener.Close()
-	close(i.kill)
-}
-
-func (i *ircServer) wait() {
-	i.wg.Wait()
+	i.conn.Close()
 }
 
 func (i *ircServer) encode(msg string) (err error) {

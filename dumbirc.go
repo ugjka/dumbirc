@@ -257,7 +257,7 @@ func (c *Connection) AddTrigger(t Trigger) {
 func (c *Connection) RunTriggers(m *Message) {
 	for _, v := range c.triggers {
 		if v.Condition(m) {
-			v.Response(m)
+			go v.Response(m)
 		}
 	}
 }
@@ -266,12 +266,12 @@ func (c *Connection) RunTriggers(m *Message) {
 func (c *Connection) RunCallbacks(m *Message) {
 	if v, ok := c.callbacks[ANYMESSAGE]; ok {
 		for _, v := range v {
-			v(m)
+			go v(m)
 		}
 	}
 	if v, ok := c.callbacks[m.Command]; ok {
 		for _, v := range v {
-			v(m)
+			go v(m)
 		}
 	}
 }
@@ -620,9 +620,9 @@ func readLoop(c *Connection) {
 		timeout.Stop()
 		c.Debug.Printf("← %s", raw)
 		msg := ParseMessage(raw)
-		go c.messenger.Broadcast(msg)
-		go c.RunCallbacks(msg)
-		go c.RunTriggers(msg)
+		c.RunCallbacks(msg)
+		c.RunTriggers(msg)
+		c.messenger.Broadcast(msg)
 	}
 }
 

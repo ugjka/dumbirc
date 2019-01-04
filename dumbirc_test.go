@@ -38,7 +38,7 @@ func TestHandleJoin(t *testing.T) {
 		}
 	}
 	bot.Disconnect()
-	Destroy(bot)
+	//Destroy(bot)
 	srv.stop()
 }
 
@@ -54,6 +54,7 @@ func TestHandleJoinPassword(t *testing.T) {
 	bot.SetThrottle(0)
 	bot.HandleJoin([]string{channel})
 	bot.SetDebugOutput(os.Stderr)
+	bot.SetLogOutput(os.Stderr)
 	bot.SetPassword(password)
 	bot.Start()
 	srv.encode(fmt.Sprintf(":example.com 001 %s :Welcome Internet Relay Chat Network", nick))
@@ -67,30 +68,33 @@ func TestHandleJoinPassword(t *testing.T) {
 			t.Errorf("expected %v, got %v", tc, msg)
 		}
 		if i == 2 {
+			time.Sleep(time.Millisecond * 100)
 			srv.encode(fmt.Sprintf(":connect!admin@test.com NOTICE %s :You are now identified for", nick))
 		}
 	}
 	bot.Disconnect()
-	Destroy(bot)
+	//Destroy(bot)
 	srv.stop()
 }
 
-func TestHandlePingPong(t *testing.T) {
+func TestHandleJoinPasswordTimeout(t *testing.T) {
 	tt := []*irc.Message{
+		irc.ParseMessage(fmt.Sprintf("PASS %s", password)),
 		irc.ParseMessage(fmt.Sprintf("USER %s +iw * %s", nick, nick)),
 		irc.ParseMessage(fmt.Sprintf("NICK %s", nick)),
-		irc.ParseMessage(fmt.Sprintf("PING %s", SERVER)),
-		irc.ParseMessage("PONG"),
+		irc.ParseMessage(fmt.Sprintf("JOIN %s", channel)),
 	}
 	srv := newServer()
 	bot := New(nick, nick, SERVER, false)
 	bot.SetThrottle(0)
-	bot.pingTick = time.Nanosecond
-	bot.HandlePingPong()
+	bot.HandleJoin([]string{channel})
 	bot.SetDebugOutput(os.Stderr)
+	bot.joinTimeout = time.Nanosecond
+	bot.SetLogOutput(os.Stderr)
+	bot.SetPassword(password)
 	bot.Start()
-	srv.encode("ANY")
-	for i, tc := range tt {
+	srv.encode(fmt.Sprintf(":example.com 001 %s :Welcome Internet Relay Chat Network", nick))
+	for _, tc := range tt {
 		msg, err := srv.decode()
 		if err != nil {
 			t.Errorf("decoding a message failed: %v", err)
@@ -99,12 +103,103 @@ func TestHandlePingPong(t *testing.T) {
 		if !reflect.DeepEqual(tc, msg) {
 			t.Errorf("expected %v, got %v", tc, msg)
 		}
-		if i == 2 {
-			srv.encode(fmt.Sprintf("PING"))
+	}
+	bot.Disconnect()
+	//Destroy(bot)
+	srv.stop()
+}
+
+func TestHandlePingPong(t *testing.T) {
+	tt := []*irc.Message{
+		irc.ParseMessage(fmt.Sprintf("USER %s +iw * %s", nick, nick)),
+		irc.ParseMessage(fmt.Sprintf("NICK %s", nick)),
+		irc.ParseMessage(fmt.Sprintf("PING %s", SERVER)),
+	}
+	srv := newServer()
+	bot := New(nick, nick, SERVER, false)
+	bot.SetThrottle(0)
+	bot.pingTick = time.Nanosecond
+	bot.HandlePingPong()
+	bot.SetDebugOutput(os.Stderr)
+	bot.Start()
+	srv.encode(":test@test!example.com PRIVMSG :hello")
+	srv.encode(":test@test!example.com PRIVMSG :hello")
+	for _, tc := range tt {
+		msg, err := srv.decode()
+		if err != nil {
+			t.Errorf("decoding a message failed: %v", err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(tc, msg) {
+			t.Errorf("expected %v, got %v", tc, msg)
 		}
 	}
 	bot.Disconnect()
 	Destroy(bot)
+	srv.stop()
+
+}
+
+func TestHandlePing(t *testing.T) {
+	tt := []*irc.Message{
+		irc.ParseMessage(fmt.Sprintf("USER %s +iw * %s", nick, nick)),
+		irc.ParseMessage(fmt.Sprintf("NICK %s", nick)),
+		irc.ParseMessage("PONG"),
+	}
+	srv := newServer()
+	bot := New(nick, nick, SERVER, false)
+	bot.SetThrottle(0)
+	bot.pingTick = time.Minute
+	bot.HandlePingPong()
+	bot.SetDebugOutput(os.Stderr)
+	bot.Start()
+	srv.encode(":example.com PING")
+	for _, tc := range tt {
+		msg, err := srv.decode()
+		if err != nil {
+			t.Errorf("decoding a message failed: %v", err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(tc, msg) {
+			t.Errorf("expected %v, got %v", tc, msg)
+		}
+	}
+	bot.Disconnect()
+	//Destroy(bot)
+	srv.stop()
+
+}
+
+func TestGetPrefix(t *testing.T) {
+	join := fmt.Sprintf(":%s!%s@example.com JOIN %s", nick, nick, channel)
+	tt := []*irc.Message{
+		irc.ParseMessage(fmt.Sprintf("USER %s +iw * %s", nick, nick)),
+		irc.ParseMessage(fmt.Sprintf("NICK %s", nick)),
+	}
+	srv := newServer()
+	bot := New(nick, nick, SERVER, false)
+	bot.SetThrottle(0)
+	bot.SetDebugOutput(os.Stderr)
+	bot.Start()
+	srv.encode(join)
+	srv.encode(fmt.Sprintf(":example.com 001 %s :Welcome Internet Relay Chat Network", nick))
+	for _, tc := range tt {
+		msg, err := srv.decode()
+		if err != nil {
+			t.Errorf("decoding a message failed: %v", err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(tc, msg) {
+			t.Errorf("expected %v, got %v", tc, msg)
+		}
+	}
+	m := irc.ParseMessage(join)
+	time.Sleep(time.Millisecond)
+	if !reflect.DeepEqual(bot.prefix, m.Prefix) {
+		t.Errorf("expected %v prefix, got %v", m.Prefix, bot.prefix)
+	}
+	bot.Disconnect()
+	//Destroy(bot)
 	srv.stop()
 
 }
