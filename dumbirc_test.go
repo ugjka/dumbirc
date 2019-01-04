@@ -38,7 +38,7 @@ func TestHandleJoin(t *testing.T) {
 		}
 	}
 	bot.Disconnect()
-	//Destroy(bot)
+	Destroy(bot)
 	srv.stop()
 }
 
@@ -73,7 +73,7 @@ func TestHandleJoinPassword(t *testing.T) {
 		}
 	}
 	bot.Disconnect()
-	//Destroy(bot)
+	Destroy(bot)
 	srv.stop()
 }
 
@@ -105,7 +105,7 @@ func TestHandleJoinPasswordTimeout(t *testing.T) {
 		}
 	}
 	bot.Disconnect()
-	//Destroy(bot)
+	Destroy(bot)
 	srv.stop()
 }
 
@@ -165,7 +165,7 @@ func TestHandlePing(t *testing.T) {
 		}
 	}
 	bot.Disconnect()
-	//Destroy(bot)
+	Destroy(bot)
 	srv.stop()
 
 }
@@ -200,7 +200,7 @@ func TestGetPrefix(t *testing.T) {
 		t.Errorf("expected prefix lenght of %d, got %d", m.Prefix.Len(), prflen)
 	}
 	bot.Disconnect()
-	//Destroy(bot)
+	Destroy(bot)
 	srv.stop()
 
 }

@@ -372,7 +372,10 @@ func (c *Connection) Disconnect() {
 	c.messenger.Kill()
 	for {
 		select {
-		case <-c.Send:
+		case _, ok := <-c.Send:
+			if !ok {
+				return
+			}
 		default:
 			close(c.Send)
 			return
@@ -473,7 +476,7 @@ func (c *Connection) HandlePingPong() {
 		pingpong(pp)
 	})
 	pingTick := time.NewTicker(c.pingTick)
-	go func(tick *time.Ticker, c *Connection) {
+	go func(tick *time.Ticker) {
 		for range tick.C {
 			select {
 			case <-pp:
@@ -485,7 +488,7 @@ func (c *Connection) HandlePingPong() {
 				c.Log.Println("got no pong")
 			}
 		}
-	}(pingTick, c)
+	}(pingTick)
 }
 
 //HandleJoin joins channels on welcome
