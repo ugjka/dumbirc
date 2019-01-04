@@ -195,8 +195,9 @@ func TestGetPrefix(t *testing.T) {
 	}
 	m := irc.ParseMessage(join)
 	time.Sleep(time.Millisecond)
-	if !reflect.DeepEqual(bot.prefix, m.Prefix) {
-		t.Errorf("expected %v prefix, got %v", m.Prefix, bot.prefix)
+	prflen := <-bot.prefixlenGet
+	if m.Prefix.Len() != prflen {
+		t.Errorf("expected prefix lenght of %d, got %d", m.Prefix.Len(), prflen)
 	}
 	bot.Disconnect()
 	//Destroy(bot)
