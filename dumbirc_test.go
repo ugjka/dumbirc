@@ -361,3 +361,37 @@ func TestReply(t *testing.T) {
 	Destroy(bot)
 	srv.stop()
 }
+
+func TestNotice(t *testing.T) {
+	longmsg := strings.Repeat("*", 512)
+	dst := "test"
+	prfxlen := len(fmt.Sprintf("NOTICE %s :", dst)) + len(nick) + 2
+	tt := []*irc.Message{
+		irc.ParseMessage(fmt.Sprintf("USER %s +iw * %s", nick, nick)),
+		irc.ParseMessage(fmt.Sprintf("NICK %s", nick)),
+		irc.ParseMessage(fmt.Sprintf("NOTICE %s :hello", dst)),
+		irc.ParseMessage(fmt.Sprintf("NOTICE %s :%s", dst, longmsg[:510-prfxlen])),
+		irc.ParseMessage(fmt.Sprintf("NOTICE %s :%s", dst, longmsg[:len(longmsg)-510+prfxlen])),
+	}
+	srv := newServer()
+	bot := New(nick, nick, SERVER, false)
+	bot.SetThrottle(0)
+	bot.Start()
+	go func(bot *Connection) {
+		bot.Notice(dst, "hello")
+		bot.Notice(dst, longmsg)
+	}(bot)
+	for _, tc := range tt {
+		msg, err := srv.decode()
+		if err != nil {
+			t.Errorf("decoding a message failed: %v", err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(tc, msg) {
+			t.Errorf("expected %v, got %v", tc, msg)
+		}
+	}
+	bot.Disconnect()
+	Destroy(bot)
+	srv.stop()
+}
