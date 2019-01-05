@@ -520,6 +520,7 @@ func (c *Connection) getPrefix() {
 		Response: func(m *Message) {
 			c.sendTestBeakon()
 			c.prefixlenSet <- []string{m.Name, m.User, m.Host}
+			c.sendTestBeakon()
 		},
 	})
 }

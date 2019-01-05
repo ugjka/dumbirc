@@ -176,6 +176,7 @@ func TestGetPrefix(t *testing.T) {
 	bot.testing = true
 	bot.Start()
 	srv.encode(join)
+	<-bot.testchan
 	srv.encode(fmt.Sprintf(":example.com 001 %s :Welcome Internet Relay Chat Network", nick))
 	for _, tc := range tt {
 		msg, err := srv.decode()
