@@ -289,3 +289,74 @@ func TestNewMessage(t *testing.T) {
 		t.Error("params is nil")
 	}
 }
+
+func TestMsg(t *testing.T) {
+	chans := []string{"#test", "#test2"}
+	longmsg := strings.Repeat("*", 512)
+	prfxlen := len("PRIVMSG #test :") + len(nick) + 2
+	tt := []*irc.Message{
+		irc.ParseMessage(fmt.Sprintf("USER %s +iw * %s", nick, nick)),
+		irc.ParseMessage(fmt.Sprintf("NICK %s", nick)),
+		irc.ParseMessage(fmt.Sprintf("PRIVMSG %s :hello", chans[0])),
+		irc.ParseMessage(fmt.Sprintf("PRIVMSG %s :hello", chans[1])),
+		irc.ParseMessage(fmt.Sprintf("PRIVMSG #test :%s", longmsg[:510-prfxlen])),
+		irc.ParseMessage(fmt.Sprintf("PRIVMSG #test :%s", longmsg[:len(longmsg)-510+prfxlen])),
+	}
+	srv := newServer()
+	bot := New(nick, nick, SERVER, false)
+	bot.SetThrottle(0)
+	bot.Start()
+	go func(bot *Connection) {
+		bot.MsgBulk(chans, "hello")
+		bot.Msg("#test", longmsg)
+	}(bot)
+	for _, tc := range tt {
+		msg, err := srv.decode()
+		if err != nil {
+			t.Errorf("decoding a message failed: %v", err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(tc, msg) {
+			t.Errorf("expected %v, got %v", tc, msg)
+		}
+	}
+	bot.Disconnect()
+	Destroy(bot)
+	srv.stop()
+}
+
+func TestReply(t *testing.T) {
+	msgs := []*Message{
+		NewMessage(),
+		NewMessage(),
+	}
+	msgs[0].To = nick
+	msgs[1].To = "#test"
+	tt := []*irc.Message{
+		irc.ParseMessage(fmt.Sprintf("USER %s +iw * %s", nick, nick)),
+		irc.ParseMessage(fmt.Sprintf("NICK %s", nick)),
+		irc.ParseMessage(fmt.Sprintf("PRIVMSG :hello")),
+		irc.ParseMessage(fmt.Sprintf("PRIVMSG %s :hello", "#test")),
+	}
+	srv := newServer()
+	bot := New(nick, nick, SERVER, false)
+	bot.SetThrottle(0)
+	bot.Start()
+	go func(bot *Connection) {
+		bot.Reply(msgs[0], "hello")
+		bot.Reply(msgs[1], "hello")
+	}(bot)
+	for _, tc := range tt {
+		msg, err := srv.decode()
+		if err != nil {
+			t.Errorf("decoding a message failed: %v", err)
+			t.FailNow()
+		}
+		if !reflect.DeepEqual(tc, msg) {
+			t.Errorf("expected %v, got %v", tc, msg)
+		}
+	}
+	bot.Disconnect()
+	Destroy(bot)
+	srv.stop()
+}
