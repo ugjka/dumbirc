@@ -279,3 +279,13 @@ func TestHandleNickTakenPass(t *testing.T) {
 	Destroy(bot)
 	srv.stop()
 }
+
+func TestNewMessage(t *testing.T) {
+	msg := NewMessage()
+	if msg.Prefix == nil {
+		t.Error("prefix is nil")
+	}
+	if msg.Params == nil {
+		t.Error("params is nil")
+	}
+}
