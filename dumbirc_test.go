@@ -190,7 +190,7 @@ func TestGetPrefix(t *testing.T) {
 	}
 	m := irc.ParseMessage(join)
 	<-bot.testchan
-	prflen := <-bot.prefixlenGet
+	prflen := bot.prefixlenGet()
 	if m.Prefix.Len() != prflen {
 		t.Errorf("expected prefix lenght of %d, got %d", m.Prefix.Len(), prflen)
 	}
